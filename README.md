@@ -6,6 +6,8 @@
 
 <a href="#get-it"><img alt="Install on macOS 14 or newer" src="https://img.shields.io/badge/Install-macOS_14+-24292f?style=for-the-badge"></a>
 
+<img alt="Uses about_50_MB" src="https://img.shields.io/badge/Uses-about_50_MB-24292f?style=for-the-badge"> <img alt="CPU under_1%25" src="https://img.shields.io/badge/CPU-under_1%25-24292f?style=for-the-badge"> <img alt="Lives_in the_menu_bar" src="https://img.shields.io/badge/Lives_in-the_menu_bar-24292f?style=for-the-badge"> <img alt="Made_for 8_GB_Macs" src="https://img.shields.io/badge/Made_for-8_GB_Macs-24292f?style=for-the-badge">
+
 </div>
 
 <br>
