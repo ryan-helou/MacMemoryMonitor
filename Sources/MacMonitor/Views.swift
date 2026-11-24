@@ -186,7 +186,7 @@ struct GroupRow: View {
                         .opacity(hovering && hasActions ? 0 : 1)
                     if hovering { actions }
                 }
-                .frame(width: 92, alignment: .trailing)
+                .frame(minWidth: 92, alignment: .trailing)
             }
             .padding(.vertical, 5).padding(.horizontal, 6)
             .padding(.leading, indent ? 22 : 0)
@@ -228,18 +228,10 @@ struct GroupRow: View {
             switch group.kind {
             case .app where m.canQuit(group):
                 let marked = m.expendable.contains(group.bundleID ?? "-")
-                Button { m.toggleExpendable(group) } label: {
-                    Image(systemName: marked ? "bolt.fill" : "bolt").foregroundStyle(marked ? .yellow : .secondary)
-                }
-                .buttonStyle(.borderless)
-                .help(marked ? "Will be auto-quit when memory is critical (if Auto-free is on). Click to unmark."
-                             : "Allow Mac Monitor to auto-quit this app when memory is critical")
-                Button { m.relaunch(group) } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless)
-                    .help("Restart — quit and reopen to give back memory it has built up")
-                Button { m.quit(group) } label: { Image(systemName: "xmark.circle.fill") }
-                    .buttonStyle(.borderless).foregroundStyle(.secondary)
-                    .help("Quit \(group.name) (right-click for Force Quit)")
+                IconButton(icon: marked ? "bolt.fill" : "bolt", label: marked ? "Auto-quit on" : "Auto-quit",
+                           tint: marked ? .yellow : .secondary) { m.toggleExpendable(group) }
+                IconButton(icon: "arrow.clockwise", label: "Relaunch") { m.relaunch(group) }
+                IconButton(icon: "xmark.circle.fill", label: "Quit") { m.quit(group) }
                     .contextMenu { Button("Force Quit") { m.forceQuit(group) } }
             case .claudeSession:
                 ConfirmButton(title: "Pause") { m.endSession(group) }
@@ -571,5 +563,27 @@ struct OnboardingView: View {
 
     private func legend(_ c: Color, _ t: String) -> some View {
         HStack(spacing: 8) { Circle().fill(c).frame(width: 10, height: 10); Text(t).font(.callout) }
+    }
+}
+
+/// A symbol that shows its name next to it while you point at it — no waiting for a tooltip.
+struct IconButton: View {
+    let icon: String; let label: String
+    var tint: Color = .secondary
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Image(systemName: icon)
+                if hover { Text(label).font(.caption.weight(.medium)).fixedSize() }
+            }
+            .padding(.horizontal, hover ? 6 : 2).padding(.vertical, 2)
+            .background(Capsule().fill(hover ? Color.primary.opacity(0.1) : .clear))
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(hover ? Color.primary : tint)
+        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
     }
 }
