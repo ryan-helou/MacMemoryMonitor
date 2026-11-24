@@ -63,7 +63,7 @@ struct HeaderView: View {
             }
             Sparkline(values: m.history, color: s.health.color).frame(height: 28)
             HStack(spacing: 14) {
-                Stat(label: "Swap used", value: fmtBytes(s.swapUsed), warn: Double(s.swapUsed) > 2 * 1_073_741_824)
+                Stat(label: "Swap used", value: fmtBytes(s.swapUsed), warn: Double(s.swapUsed) > Config.tipSwapUsed)
                 Stat(label: "Swap reads", value: fmtRate(s.swapInRate), warn: s.isThrashing)
                 Stat(label: "CPU", value: "\(Int(s.cpuUsage))%", warn: s.cpuUsage > 85)
                 Stat(label: "Squeezed", value: fmtBytes(s.compressedOriginal), warn: false)
@@ -206,8 +206,8 @@ struct GroupRow: View {
     }
 
     private var memColor: Color {
-        let gb = Double(group.memory) / 1_073_741_824
-        return gb >= 1.5 ? .red : gb >= 0.7 ? .orange : .primary
+        let m = Double(group.memory)
+        return m >= Config.rowAlarmMemory ? .red : m >= Config.rowWarnMemory ? .orange : .primary
     }
 
     private var helpText: String {
@@ -325,7 +325,7 @@ struct FooterView: View {
                 }
                 .toggleStyle(.switch).controlSize(.small)
                 Picker("", selection: $m.autoPauseMinutes) {
-                    ForEach([10, 15, 30, 60], id: \.self) { Text("\($0) min").tag($0) }
+                    ForEach(Config.autoPauseChoices, id: \.self) { Text("\($0) min").tag($0) }
                 }
                 .labelsHidden().controlSize(.small).frame(width: 78)
                 .disabled(!m.autoPauseEnabled)
@@ -344,7 +344,7 @@ struct FooterView: View {
                     NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
                 }
                 Spacer()
-                Button("Quit Mac Monitor") { NSApp.terminate(nil) }
+                Button("Quit Mac Memory Monitor") { NSApp.terminate(nil) }
             }
             .controlSize(.small)
         }

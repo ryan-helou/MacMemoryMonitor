@@ -26,6 +26,12 @@ When a Mac runs out of memory, it starts borrowing space from the disk, and ever
 
 ## Get it
 
+**[⬇ Download the latest version](https://github.com/ryan-helou/MacMemoryMonitor/releases/latest)** (`MacMemoryMonitor-x.y.z.zip`), unzip it and drag **Mac Memory Monitor** into your Applications folder. It works on Apple Silicon and Intel Macs.
+
+The first time you open it, macOS warns that it can't check the app, because it isn't notarized by Apple. Click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. You only need to do this once.
+
+### Or build it yourself
+
 Open the Terminal app and paste these three lines. It builds the app, puts it in your Applications folder and opens it. You need Apple's free developer tools; if they're missing, your Mac will offer to install them.
 
 ```bash
@@ -33,3 +39,19 @@ git clone https://github.com/ryan-helou/MacMemoryMonitor.git
 cd MacMemoryMonitor
 ./build.sh
 ```
+
+## Customize it
+
+Every threshold, timing and app list lives in one file, [`Sources/MacMonitor/Config.swift`](Sources/MacMonitor/Config.swift). Examples: when the menu bar turns orange or red, how long before idle Claude sessions are paused, which apps count as "browser engine" apps. Change a value and run `./build.sh` again. Most day-to-day options (auto-pause, auto-free, warnings, open at login) are also switches at the bottom of the panel. See [CONTRIBUTING.md](CONTRIBUTING.md) for a map of the code.
+
+## Privacy
+
+It never connects to the internet and collects nothing. Everything it shows is read from your own Mac and stays there.
+
+## Uninstall
+
+Quit it from its panel (**Quit Mac Memory Monitor**) and drag **Mac Memory Monitor** from Applications to the Trash.
+
+## License
+
+MIT. Use it, change it and share it freely.

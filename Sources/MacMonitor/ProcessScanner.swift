@@ -50,9 +50,9 @@ private struct RawProc {
 /// Path marker for Claude Code session binaries. Overridable only so tests can use a fake session
 /// (the Claude app kills stray processes at the real path).
 private let sessionMarker = ProcessInfo.processInfo.environment["MACMON_SESSION_MARKER"] ?? "/claude-code/"
-private let shellNames: Set<String> = ["zsh", "bash", "sh", "fish", "login", "tmux", "screen", "sudo", "caffeinate"]
-private let terminalApps: Set<String> = ["Terminal.app", "iTerm.app", "Warp.app", "Ghostty.app", "kitty.app", "Alacritty.app", "WezTerm.app"]
-private let interpreters: Set<String> = ["node", "python", "python3", "bun", "deno", "ruby", "java", "Python"]
+private let shellNames = Config.shellNames
+private let terminalApps = Config.terminalApps
+private let interpreters = Config.interpreters
 
 /// Walks every process, measures its real memory cost (physical footprint, which includes
 /// what has been compressed — plain RSS hides most of it on a swapping Mac) and folds
@@ -143,7 +143,7 @@ final class ProcessScanner {
             groups[id]!.fromDesktop = (procs[p.ppid]?.path.contains("/Claude.app/") ?? false)
             // MCP servers start with the session; anything started later is real work (a command, a Monitor, a build).
             let late = groups[id]!.pids.compactMap { procs[$0] }
-                .filter { $0.pid != p.pid && $0.start.timeIntervalSince(p.start) > 60 }
+                .filter { $0.pid != p.pid && $0.start.timeIntervalSince(p.start) > Config.sessionTaskGrace }
             if let task = late.max(by: { $0.start < $1.start }) { groups[id]!.runningTask = task.name }
         }
 
@@ -194,7 +194,7 @@ final class ProcessScanner {
         var result = ScanResult()
         result.groups = groups.values.filter { $0.memory > 0 || $0.kind == .claudeSession }
         result.hogs = procs.values
-            .filter { $0.cpu > 60 && $0.pid != myPid && !isSystem($0) }
+            .filter { $0.cpu > Config.tipCPUHog && $0.pid != myPid && !isSystem($0) }
             .sorted { $0.cpu > $1.cpu }
             .prefix(3)
             .map { Hog(pid: $0.pid, name: describe($0), cpu: $0.cpu) }

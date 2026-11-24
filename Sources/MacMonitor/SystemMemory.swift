@@ -23,12 +23,12 @@ struct MemorySnapshot {
     var pressurePercent: Int { max(0, min(100, 100 - freePercent)) }
 
     /// Reading pages back from swap is the moment the Mac stalls.
-    var isThrashing: Bool { swapInRate > 20 * 1_048_576 }
+    var isThrashing: Bool { swapInRate > Config.thrashingSwapReadRate }
 
     enum Health { case healthy, strained, critical }
     var health: Health {
         if pressureLevel >= 4 || (pressureLevel >= 2 && isThrashing) { return .critical }
-        if pressureLevel >= 2 || isThrashing || swapInRate > 5 * 1_048_576 { return .strained }
+        if pressureLevel >= 2 || isThrashing || swapInRate > Config.strainedSwapReadRate { return .strained }
         return .healthy
     }
 }

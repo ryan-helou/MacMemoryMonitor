@@ -47,15 +47,15 @@ final class Monitor: ObservableObject {
         guardEnabled = d.bool(forKey: "guardEnabled")
         expendable = Set(d.stringArray(forKey: "expendable") ?? [])
         alertsEnabled = d.object(forKey: "alertsEnabled") as? Bool ?? true
-        autoPauseEnabled = d.object(forKey: "autoPauseEnabled") as? Bool ?? true
-        autoPauseMinutes = d.object(forKey: "autoPauseMinutes") as? Int ?? 15
+        autoPauseEnabled = d.object(forKey: "autoPauseEnabled") as? Bool ?? Config.autoPauseOnByDefault
+        autoPauseMinutes = d.object(forKey: "autoPauseMinutes") as? Int ?? Config.autoPauseDefaultMinutes
     }
 
     func start() {
         if canNotify { UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in } }
         sampleMemory()
         scanNow()
-        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: Config.sampleInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.onTick() }
         }
     }
@@ -64,7 +64,7 @@ final class Monitor: ObservableObject {
         sampleMemory()
         tick += 1
         // Scan processes often while you're looking, rarely while you're not — the monitor must stay cheap.
-        let every = visible ? 1 : (mem.health == .healthy ? 8 : 3)
+        let every = visible ? Config.scanEverySamplesVisible : (mem.health == .healthy ? Config.scanEverySamplesHealthy : Config.scanEverySamplesStrained)
         if tick % every == 0 { scanNow() }
         evaluate()
     }
@@ -72,7 +72,7 @@ final class Monitor: ObservableObject {
     private func sampleMemory() {
         mem = sampler.sample()
         history.append(Double(mem.pressurePercent))
-        if history.count > 90 { history.removeFirst(history.count - 90) }
+        if history.count > Config.historyLength { history.removeFirst(history.count - Config.historyLength) }
     }
 
     func scanNow() {
@@ -100,7 +100,7 @@ final class Monitor: ObservableObject {
         for var g in r.groups {
             switch g.kind {
             case .claudeSession:
-                if g.cpu > 3 || g.runningTask != nil { sessionLastBusy[g.rootPid] = now }
+                if g.cpu > Config.sessionBusyCPU || g.runningTask != nil { sessionLastBusy[g.rootPid] = now }
                 let idle = idleTime(g, now: now)
                 var state: String
                 if let task = g.runningTask { state = "running \(task)" }
@@ -145,26 +145,25 @@ final class Monitor: ObservableObject {
             others.append(all)
         }
         others.sort { $0.memory > $1.memory }
-        others = others.filter { $0.memory >= 15 * 1_048_576 || $0.kind == .claudeAll }
+        others = others.filter { Double($0.memory) >= Config.minRowMemory || $0.kind == .claudeAll }
         if let system { others.append(system) }
         rows = others
         tips = buildTips(sessions: sessions)
     }
 
-    private func cpuText(_ cpu: Double) -> String { cpu >= 5 ? " · \(Int(cpu))% CPU" : "" }
+    private func cpuText(_ cpu: Double) -> String { cpu >= Config.showCPUAbove ? " · \(Int(cpu))% CPU" : "" }
 
     private func buildTips(sessions: [ProcGroup]) -> [Tip] {
         var t: [Tip] = []
-        let gb = 1_073_741_824.0
         let apps = rows.filter { $0.kind == .app }
 
-        if Double(mem.swapUsed) > 2 * gb {
+        if Double(mem.swapUsed) > Config.tipSwapUsed {
             let text = mem.health == .healthy
                 ? "\(fmtBytes(mem.swapUsed)) is parked in swap on disk. It's harmless while nothing reads it back, but it means RAM is full — the next app you open will cause lag."
                 : "\(fmtBytes(mem.swapUsed)) has spilled to disk (swap) and macOS is reading it back — that's the lag. Close or pause the biggest items below."
             t.append(Tip(id: "swap", icon: "exclamationmark.triangle.fill", text: text))
         }
-        if sessions.count >= 3 {
+        if sessions.count >= Config.tipClaudeSessions {
             let total = sessions.reduce(0) { $0 + $1.memory }
             let helpers = sessions.reduce(0) { $0 + $1.processCount - 1 }
             var tip = Tip(id: "claude", icon: "sparkles",
@@ -177,7 +176,7 @@ final class Monitor: ObservableObject {
             }
             t.append(tip)
         }
-        if let chrome = apps.first(where: { $0.bundleID == "com.google.Chrome" }), Double(chrome.memory) > 1.2 * gb {
+        if let chrome = apps.first(where: { $0.bundleID == "com.google.Chrome" }), Double(chrome.memory) > Config.tipChromeMemory {
             t.append(Tip(id: "chrome", icon: "globe",
                          text: "Chrome is using \(fmtBytes(chrome.memory)) across \(chrome.processCount) processes. Memory Saver unloads tabs you aren't looking at.",
                          actionTitle: "Open setting", action: {
@@ -187,8 +186,7 @@ final class Monitor: ObservableObject {
                              try? p.run()
                          }))
         }
-        let webAppIDs: Set<String> = ["com.spotify.client", "com.hnc.Discord", "com.microsoft.teams2", "com.microsoft.teams",
-                                       "com.tinyspeck.slackmacgap", "notion.id", "com.figma.Desktop", "com.microsoft.VSCode"]
+        let webAppIDs = Config.webAppBundleIDs
         let webApps = apps.filter { webAppIDs.contains($0.bundleID ?? "") }
         if webApps.count >= 2 {
             let total = webApps.reduce(0) { $0 + $1.memory }
@@ -202,11 +200,11 @@ final class Monitor: ObservableObject {
                          actionTitle: "Stop it", confirm: true,
                          action: { [weak self] in self?.terminate(pids: [pid], label: h.name) }))
         }
-        if lastScan.spotlightCPU > 40 {
+        if lastScan.spotlightCPU > Config.tipSpotlightCPU {
             t.append(Tip(id: "spotlight", icon: "magnifyingglass",
                          text: "Spotlight is indexing (\(Int(lastScan.spotlightCPU))% CPU). It settles on its own — exclude big code/video folders in System Settings › Spotlight to stop it coming back."))
         }
-        if mem.diskFree > 0 && Double(mem.diskFree) < 15 * gb {
+        if mem.diskFree > 0 && Double(mem.diskFree) < Config.tipLowDisk {
             t.append(Tip(id: "disk", icon: "internaldrive",
                          text: "Only \(fmtBytes(mem.diskFree)) of disk free. Swap lives on disk, so a full disk makes memory pressure much worse."))
         }
@@ -233,7 +231,7 @@ final class Monitor: ObservableObject {
             candidates = sessions.filter { ($0.cwd ?? "").contains(String(parts[1])) }
         } else if !autoPauseEnabled { return }
         let idle = candidates.filter {
-            $0.fromDesktop && $0.runningTask == nil && $0.cpu < 3 && !pausing.contains($0.rootPid) && idleTime($0, now: now) >= limit
+            $0.fromDesktop && $0.runningTask == nil && $0.cpu < Config.sessionBusyCPU && !pausing.contains($0.rootPid) && idleTime($0, now: now) >= limit
         }
         guard !idle.isEmpty else { return }
         for g in idle {
@@ -265,13 +263,13 @@ final class Monitor: ObservableObject {
         } else {
             criticalSince = nil
         }
-        guard let since = criticalSince, now.timeIntervalSince(since) >= 15 else { return }
+        guard let since = criticalSince, now.timeIntervalSince(since) >= Config.criticalFor else { return }
 
-        if guardEnabled, now.timeIntervalSince(lastGuardAction) > 30, autoFree() {
+        if guardEnabled, now.timeIntervalSince(lastGuardAction) > Config.autoFreeCooldown, autoFree() {
             lastGuardAction = now
             return
         }
-        if alertsEnabled, now.timeIntervalSince(lastAlert) > 15 * 60 {
+        if alertsEnabled, now.timeIntervalSince(lastAlert) > Config.alertCooldown {
             lastAlert = now
             let top = rows.filter { $0.kind != .system }.prefix(2)
                 .map { "\($0.name) (\(fmtBytes($0.memory)))" }.joined(separator: ", ")
