@@ -42,6 +42,13 @@ The first time you open it, macOS warns that it can't check the app, because it 
 
 Don't see it in the menu bar? On macOS 26, open **System Settings → Menu Bar** and switch **Mac Memory Monitor** on under **Allow in the Menu Bar**. If your menu bar is very full, it may also be hidden behind the notch or other icons.
 
+### Or with Homebrew
+
+```bash
+brew trust ryan-helou/tap
+brew install --cask ryan-helou/tap/mac-memory-monitor
+```
+
 ### Or build it yourself
 
 Open the Terminal app and paste these three lines. It builds the app, puts it in your Applications folder and opens it. You need Apple's free developer tools; if they're missing, your Mac will offer to install them.
