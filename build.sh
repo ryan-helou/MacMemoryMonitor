@@ -33,9 +33,13 @@ if [[ "${1:-}" == "--package" ]]; then
 fi
 
 pkill -x MacMonitor 2>/dev/null || true
-mkdir -p ~/Applications
+# Replace the copy you already have (e.g. from Homebrew in /Applications) so there's only ever one.
+DEST=~/Applications
+[[ -d "/Applications/$NAME.app" ]] && DEST=/Applications
+mkdir -p "$DEST"
 rm -rf ~/Applications/"Mac Monitor.app"   # older name
-rm -rf ~/Applications/"$NAME.app"
-cp -R "$APP" ~/Applications/
-open ~/Applications/"$NAME.app"
-echo "Installed ~/Applications/$NAME.app — look for ● NN% in the menu bar."
+rm -rf "$DEST/$NAME.app"
+cp -R "$APP" "$DEST/"
+[[ "$DEST" == /Applications ]] && rm -rf ~/Applications/"$NAME.app"
+open "$DEST/$NAME.app"
+echo "Installed $DEST/$NAME.app — look for ● NN% in the menu bar."

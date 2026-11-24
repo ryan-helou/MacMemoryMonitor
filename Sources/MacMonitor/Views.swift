@@ -17,11 +17,11 @@ struct PopoverView: View {
         case "history": .history
         case "disk": .disk
         case "settings": .settings
+        case "tips": .tips
         default: .main
         }
     }()
     @State private var showAll = false
-    @State private var showAllTips = false
 
     private let shortList = 6
 
@@ -33,6 +33,14 @@ struct PopoverView: View {
                 SettingsView(close: { screen = .main })
             } else if screen == .history {
                 HistoryView(close: { screen = .main })
+            } else if screen == .tips {
+                VStack(alignment: .leading, spacing: 10) {
+                    ScreenHeader(title: "Tips", close: { screen = .main })
+                    ScrollView {
+                        VStack(spacing: 8) { ForEach(m.tips) { TipCard(tip: $0) } }
+                    }
+                    .frame(maxHeight: 430)
+                }
             } else if screen == .disk {
                 DiskView(close: { screen = .main })
             } else {
@@ -40,9 +48,9 @@ struct PopoverView: View {
                 if let first = m.tips.first {
                     TipCard(tip: first)
                     if m.tips.count > 1 {
-                        if showAllTips { ForEach(m.tips.dropFirst()) { TipCard(tip: $0) } }
-                        Button(showAllTips ? "Fewer tips" : "\(m.tips.count - 1) more tip\(m.tips.count == 2 ? "" : "s")") {
-                            withAnimation(.easeOut(duration: 0.15)) { showAllTips.toggle() }
+                        Button { screen = .tips } label: {
+                            Label("\(m.tips.count - 1) more tip\(m.tips.count == 2 ? "" : "s")", systemImage: "chevron.right")
+                                .labelStyle(TrailingIcon())
                         }
                         .buttonStyle(.link).font(.caption)
                     }
@@ -376,7 +384,13 @@ struct SettingsView: View {
     }
 }
 
-enum Screen { case main, history, disk, settings }
+enum Screen { case main, history, disk, settings, tips }
+
+struct TrailingIcon: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 3) { configuration.title; configuration.icon.imageScale(.small) }
+    }
+}
 
 struct ScreenHeader: View {
     let title: String; let close: () -> Void
