@@ -565,7 +565,8 @@ struct OnboardingView: View {
     }
 }
 
-/// A symbol that shows its name next to it while you point at it — no waiting for a tooltip.
+/// A symbol that shows its name in a floating pill while you point at it. The pill floats over the content,
+/// so nothing moves and the panel never changes size.
 struct IconButton: View {
     let icon: String; let label: String
     var tint: Color = .secondary
@@ -574,15 +575,24 @@ struct IconButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 3) {
-                Image(systemName: icon)
-                if hover { Text(label).font(.caption.weight(.medium)).fixedSize() }
-            }
-            .padding(.horizontal, hover ? 6 : 2).padding(.vertical, 2)
-            .background(Capsule().fill(hover ? Color.primary.opacity(0.1) : .clear))
+            Image(systemName: icon).padding(2).contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .foregroundStyle(hover ? Color.primary : tint)
-        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+        .overlay(alignment: .trailing) {
+            if hover {
+                Text(label)
+                    .font(.caption.weight(.medium)).fixedSize()
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Capsule().fill(Color(nsColor: .windowBackgroundColor)))
+                    .overlay(Capsule().stroke(Color.primary.opacity(0.15)))
+                    .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+                    .alignmentGuide(.trailing) { d in d[.leading] - 4 }   // sits just left of the symbol
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .zIndex(hover ? 1 : 0)
+        .onHover { h in withAnimation(.easeOut(duration: 0.1)) { hover = h } }
     }
 }
