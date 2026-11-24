@@ -23,6 +23,8 @@ final class Monitor: ObservableObject {
     @Published var guardEnabled: Bool { didSet { UserDefaults.standard.set(guardEnabled, forKey: "guardEnabled") } }
     @Published var expendable: Set<String> { didSet { UserDefaults.standard.set(Array(expendable), forKey: "expendable") } }
     @Published var alertsEnabled: Bool { didSet { UserDefaults.standard.set(alertsEnabled, forKey: "alertsEnabled") } }
+    @Published var autoPauseEnabled: Bool { didSet { UserDefaults.standard.set(autoPauseEnabled, forKey: "autoPauseEnabled") } }
+    @Published var autoPauseMinutes: Int { didSet { UserDefaults.standard.set(autoPauseMinutes, forKey: "autoPauseMinutes") } }
 
     var visible = false { didSet { if visible && !oldValue { scanNow() } } }
 
@@ -37,6 +39,7 @@ final class Monitor: ObservableObject {
     private var lastGuardAction = Date.distantPast
     private var lastAlert = Date.distantPast
     private var sessionLastBusy: [pid_t: Date] = [:]
+    private var pausing: Set<pid_t> = []
     private let launched = Date()
 
     init() {
@@ -44,10 +47,12 @@ final class Monitor: ObservableObject {
         guardEnabled = d.bool(forKey: "guardEnabled")
         expendable = Set(d.stringArray(forKey: "expendable") ?? [])
         alertsEnabled = d.object(forKey: "alertsEnabled") as? Bool ?? true
+        autoPauseEnabled = d.object(forKey: "autoPauseEnabled") as? Bool ?? true
+        autoPauseMinutes = d.object(forKey: "autoPauseMinutes") as? Int ?? 15
     }
 
     func start() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        if canNotify { UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in } }
         sampleMemory()
         scanNow()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -95,11 +100,18 @@ final class Monitor: ObservableObject {
         for var g in r.groups {
             switch g.kind {
             case .claudeSession:
-                if g.cpu > 3 { sessionLastBusy[g.rootPid] = now }
-                let idle = now.timeIntervalSince(sessionLastBusy[g.rootPid] ?? launched)
-                let state = idle < 120 ? "working" : "idle \(idle >= now.timeIntervalSince(launched) - 5 ? "≥ " : "")\(fmtDuration(idle))"
-                let helpers = g.processCount - 1
-                g.detail = "\(state) · \(helpers) helper\(helpers == 1 ? "" : "s")"
+                if g.cpu > 3 || g.runningTask != nil { sessionLastBusy[g.rootPid] = now }
+                let idle = idleTime(g, now: now)
+                var state: String
+                if let task = g.runningTask { state = "running \(task)" }
+                else if idle < 120 { state = "working" }
+                else {
+                    state = "idle \(idle >= now.timeIntervalSince(launched) - 5 ? "≥ " : "")\(fmtDuration(idle))"
+                    let left = Double(autoPauseMinutes * 60) - idle
+                    if autoPauseEnabled && g.fromDesktop && left > 0 && left < 5 * 60 { state += " · pausing in \(fmtDuration(max(60, left)))" }
+                }
+                if pausing.contains(g.rootPid) { state = "pausing…" }
+                g.detail = state
                 if let s = g.started { g.detail += " · open \(fmtDuration(now.timeIntervalSince(s)))" }
                 sessions.append(g)
             case .system:
@@ -119,6 +131,8 @@ final class Monitor: ObservableObject {
         }
         let live = Set(sessions.map(\.rootPid))
         sessionLastBusy = sessionLastBusy.filter { live.contains($0.key) }
+        pausing = pausing.intersection(live)
+        autoPause(sessions, now: now)
 
         if !sessions.isEmpty {
             sessions.sort { $0.memory > $1.memory }
@@ -199,11 +213,45 @@ final class Monitor: ObservableObject {
         return t
     }
 
+    /// Idle = no CPU and no running task since we last saw activity. Before we've seen any, count from
+    /// whichever is later: the monitor starting or the session starting (so a freshly reopened session isn't "idle for hours").
+    private func idleTime(_ g: ProcGroup, now: Date) -> TimeInterval {
+        let baseline = max(launched, g.started ?? launched)
+        return now.timeIntervalSince(sessionLastBusy[g.rootPid] ?? baseline)
+    }
+
+    /// Pauses Claude desktop sessions nobody has touched for `autoPauseMinutes`. Never touches a session that is
+    /// running a command/background job/Monitor, nor terminal `claude` sessions (those can't be reopened from the sidebar).
+    private func autoPause(_ sessions: [ProcGroup], now: Date) {
+        // Hidden test hook: `--test-autopause=<seconds>:<cwd substring>` only ever acts on sessions whose folder matches.
+        var limit = TimeInterval(autoPauseMinutes * 60)
+        var candidates = sessions
+        if let arg = CommandLine.arguments.first(where: { $0.hasPrefix("--test-autopause=") }) {
+            let parts = arg.dropFirst("--test-autopause=".count).split(separator: ":", maxSplits: 1)
+            guard parts.count == 2, let secs = Double(parts[0]) else { return }
+            limit = secs
+            candidates = sessions.filter { ($0.cwd ?? "").contains(String(parts[1])) }
+        } else if !autoPauseEnabled { return }
+        let idle = candidates.filter {
+            $0.fromDesktop && $0.runningTask == nil && $0.cpu < 3 && !pausing.contains($0.rootPid) && idleTime($0, now: now) >= limit
+        }
+        guard !idle.isEmpty else { return }
+        for g in idle {
+            pausing.insert(g.rootPid)
+            terminate(pids: g.pids, label: "Claude session “\(g.name)” (idle \(fmtDuration(idleTime(g, now: now))))",
+                      rootFirst: g.rootPid, verb: "Auto-paused")
+        }
+        let freed = idle.reduce(0) { $0 + $1.memory }
+        let names = idle.map(\.name).joined(separator: ", ")
+        notify(title: "Paused \(idle.count) idle Claude session\(idle.count == 1 ? "" : "s") · freed \(fmtBytes(freed))",
+               body: "\(names) — untouched for \(autoPauseMinutes)+ min. Conversations are saved; reopen them from the Claude sidebar.")
+    }
+
     private func idleSessions(olderThan secs: TimeInterval) -> [ProcGroup] {
         guard Date().timeIntervalSince(launched) >= secs else { return [] }
         let now = Date()
         return (rows.first { $0.kind == .claudeAll }?.children ?? []).filter {
-            now.timeIntervalSince(sessionLastBusy[$0.rootPid] ?? launched) >= secs
+            idleTime($0, now: now) >= secs
         }
     }
 
@@ -245,7 +293,11 @@ final class Monitor: ObservableObject {
         return true
     }
 
+    /// Notifications only work from inside the .app bundle (a bare binary would crash).
+    private var canNotify: Bool { Bundle.main.bundleIdentifier != nil }
+
     private func notify(title: String, body: String) {
+        guard canNotify else { return }
         let c = UNMutableNotificationContent()
         c.title = title
         c.body = body

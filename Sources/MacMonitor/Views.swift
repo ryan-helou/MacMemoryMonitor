@@ -315,6 +315,21 @@ struct FooterView: View {
                 }
             }
             .toggleStyle(.switch).controlSize(.small)
+            HStack(spacing: 6) {
+                Toggle(isOn: $m.autoPauseEnabled) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Auto-pause idle Claude sessions").font(.callout)
+                        Text("Conversations stay saved. Sessions running a command or background job are never paused.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.switch).controlSize(.small)
+                Picker("", selection: $m.autoPauseMinutes) {
+                    ForEach([10, 15, 30, 60], id: \.self) { Text("\($0) min").tag($0) }
+                }
+                .labelsHidden().controlSize(.small).frame(width: 78)
+                .disabled(!m.autoPauseEnabled)
+            }
             Toggle("Warn me when memory runs out", isOn: $m.alertsEnabled).toggleStyle(.switch).controlSize(.small).font(.callout)
             Toggle("Open at login", isOn: Binding(get: { m.launchAtLogin }, set: { m.launchAtLogin = $0 }))
                 .toggleStyle(.switch).controlSize(.small).font(.callout)

@@ -23,6 +23,8 @@ struct ProcGroup: Identifiable {
     var started: Date?
     var cwd: String?
     var children: [ProcGroup] = []
+    var fromDesktop = false        // session started by the Claude desktop app (resumable from its sidebar)
+    var runningTask: String?       // a command/background job the session started after launch → never auto-pause
     var processCount: Int { pids.count }
 }
 
@@ -45,6 +47,9 @@ private struct RawProc {
     let start: Date
 }
 
+/// Path marker for Claude Code session binaries. Overridable only so tests can use a fake session
+/// (the Claude app kills stray processes at the real path).
+private let sessionMarker = ProcessInfo.processInfo.environment["MACMON_SESSION_MARKER"] ?? "/claude-code/"
 private let shellNames: Set<String> = ["zsh", "bash", "sh", "fish", "login", "tmux", "screen", "sudo", "caffeinate"]
 private let terminalApps: Set<String> = ["Terminal.app", "iTerm.app", "Warp.app", "Ghostty.app", "kitty.app", "Alacritty.app", "WezTerm.app"]
 private let interpreters: Set<String> = ["node", "python", "python3", "bun", "deno", "ruby", "java", "Python"]
@@ -125,7 +130,7 @@ final class ProcessScanner {
         }
 
         // 1. Claude Code sessions (+ every MCP server / tool they spawned).
-        let isClaudeCode: (RawProc) -> Bool = { $0.path.contains("/claude-code/") && $0.name == "claude" }
+        let isClaudeCode: (RawProc) -> Bool = { $0.path.contains(sessionMarker) && $0.name == "claude" }
         for p in procs.values where isClaudeCode(p) && p.pid != myPid {
             if let parent = procs[p.ppid], isClaudeCode(parent) { continue } // nested → belongs to parent session
             let id = "s\(p.pid)"
@@ -134,6 +139,12 @@ final class ProcessScanner {
             let folder = cwd.isEmpty ? "Session \(p.pid)" : (cwd as NSString).lastPathComponent
             groups[id] = ProcGroup(id: id, kind: .claudeSession, name: folder, rootPid: p.pid, started: p.start, cwd: cwd)
             addSubtree(p.pid, to: id)
+            // Desktop sessions run as Claude.app → disclaimer → claude; terminal ones have a shell as parent.
+            groups[id]!.fromDesktop = (procs[p.ppid]?.path.contains("/Claude.app/") ?? false)
+            // MCP servers start with the session; anything started later is real work (a command, a Monitor, a build).
+            let late = groups[id]!.pids.compactMap { procs[$0] }
+                .filter { $0.pid != p.pid && $0.start.timeIntervalSince(p.start) > 60 }
+            if let task = late.max(by: { $0.start < $1.start }) { groups[id]!.runningTask = task.name }
         }
 
         // 2. Apps (everything inside one .app bundle) and macOS itself.

@@ -20,6 +20,7 @@ When a Mac runs out of memory, it starts borrowing space from the disk, and ever
 - See which apps use the most memory, with each app's background helpers grouped under its name.
 - Quit, restart or force-quit a heavy app with one click. Restarting gives back memory an app has slowly piled up.
 - Pause an AI coding session (Claude Code) without losing the conversation, and stop stray background scripts.
+- Automatically pause Claude Code sessions you haven't touched in a while (15 minutes by default). It never pauses a session that's still running something in the background.
 - Get plain tips based on what's open, such as turning on Chrome's Memory Saver, plus a warning when memory runs out.
 - Optionally let it close apps you've marked as safe to close, biggest first, when memory gets critical.
 

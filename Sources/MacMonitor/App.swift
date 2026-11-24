@@ -83,7 +83,9 @@ private func dump() {
     print("apps \(fmtBytes(s.app)) wired \(fmtBytes(s.wired)) compressed \(fmtBytes(s.compressed)) (holding \(fmtBytes(s.compressedOriginal))) of \(fmtBytes(s.total))")
     print("swap \(fmtBytes(s.swapUsed))/\(fmtBytes(s.swapTotal)) in \(fmtRate(s.swapInRate)) out \(fmtRate(s.swapOutRate)) cpu \(Int(s.cpuUsage))% disk free \(fmtBytes(s.diskFree))")
     for g in r.groups.sorted(by: { $0.memory > $1.memory }).prefix(25) {
-        print(String(format: "%9@ %5.0f%%  %3d  %@  %@", fmtBytes(g.memory), g.cpu, g.processCount, "\(g.kind)", g.name))
+        var flags = ""
+        if g.kind == .claudeSession { flags = (g.fromDesktop ? " [desktop]" : " [terminal]") + (g.runningTask.map { " [task: \($0)]" } ?? "") }
+        print(String(format: "%9@ %5.0f%%  %3d  %@  %@%@", fmtBytes(g.memory), g.cpu, g.processCount, "\(g.kind)", g.name, flags))
     }
     for h in r.hogs { print("HOG \(h.name) \(Int(h.cpu))%") }
     print("spotlight cpu \(Int(r.spotlightCPU))%")
