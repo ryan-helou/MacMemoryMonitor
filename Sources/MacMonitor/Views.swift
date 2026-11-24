@@ -12,28 +12,52 @@ extension MemorySnapshot.Health {
 
 struct PopoverView: View {
     @EnvironmentObject var m: Monitor
+    @State private var showSettings = false
+    @State private var showAll = false
+    @State private var showAllTips = false
+
+    private let shortList = 6
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HeaderView()
-            if !m.tips.isEmpty { TipsView() }
-            Divider()
-            HStack {
-                Text("What's using memory").font(.headline)
-                Spacer()
-                Text("real footprint").font(.caption).foregroundStyle(.secondary)
-            }
-            ScrollView {
-                LazyVStack(spacing: 1) {
-                    ForEach(m.rows) { g in GroupRow(group: g) }
+        VStack(alignment: .leading, spacing: 14) {
+            if showSettings {
+                SettingsView(close: { showSettings = false })
+            } else {
+                HeaderView(openSettings: { showSettings = true })
+                if let first = m.tips.first {
+                    TipCard(tip: first)
+                    if m.tips.count > 1 {
+                        if showAllTips { ForEach(m.tips.dropFirst()) { TipCard(tip: $0) } }
+                        Button(showAllTips ? "Fewer tips" : "\(m.tips.count - 1) more tip\(m.tips.count == 2 ? "" : "s")") {
+                            withAnimation(.easeOut(duration: 0.15)) { showAllTips.toggle() }
+                        }
+                        .buttonStyle(.link).font(.caption)
+                    }
                 }
+                list
             }
-            .frame(height: 300)
-            Divider()
-            FooterView()
         }
-        .padding(14)
-        .frame(width: 440)
+        .padding(16)
+        .frame(width: 380)
+    }
+
+    @ViewBuilder private var list: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Using the most memory").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            let rows = showAll ? m.rows : Array(m.rows.filter { $0.kind != .system }.prefix(shortList))
+            if showAll {
+                ScrollView { LazyVStack(spacing: 1) { ForEach(rows) { GroupRow(group: $0) } } }.frame(height: 300)
+            } else {
+                VStack(spacing: 1) { ForEach(rows) { GroupRow(group: $0) } }
+            }
+            if m.rows.count > shortList {
+                Button(showAll ? "Show less" : "Show all \(m.rows.count)") {
+                    withAnimation(.easeOut(duration: 0.15)) { showAll.toggle() }
+                }
+                .buttonStyle(.link).font(.caption)
+            }
+            Text("Hover a row to quit, restart or pause it.").font(.caption2).foregroundStyle(.tertiary)
+        }
     }
 }
 
@@ -41,35 +65,34 @@ struct PopoverView: View {
 
 struct HeaderView: View {
     @EnvironmentObject var m: Monitor
+    let openSettings: () -> Void
 
     var body: some View {
         let s = m.mem
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Circle().fill(s.health.color).frame(width: 10, height: 10)
-                Text(s.health.title).font(.title3.weight(.semibold))
-                Spacer()
-                Text("\(s.pressurePercent)%").font(.title2.monospacedDigit().weight(.semibold))
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                Text("\(s.pressurePercent)%")
+                    .font(.system(size: 34, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(s.health.color)
-                    .help("Memory pressure: how hard macOS is working to find free RAM")
-            }
-            MemoryBar(s: s).frame(height: 12)
-            HStack(spacing: 10) {
-                Legend(color: .blue, label: "Apps", value: s.app)
-                Legend(color: .orange, label: "System", value: s.wired)
-                Legend(color: .purple, label: "Compressed", value: s.compressed)
+                    .help("Memory pressure: how hard macOS is working to find free memory")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(s.health.title).font(.headline)
+                    Text(subtitle(s)).font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
-                Text("of \(fmtBytes(s.total))").font(.caption).foregroundStyle(.secondary)
+                Button(action: openSettings) { Image(systemName: "gearshape").font(.title3) }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary).help("Settings")
             }
-            Sparkline(values: m.history, color: s.health.color).frame(height: 28)
-            HStack(spacing: 14) {
-                Stat(label: "Swap used", value: fmtBytes(s.swapUsed), warn: Double(s.swapUsed) > Config.tipSwapUsed)
-                Stat(label: "Swap reads", value: fmtRate(s.swapInRate), warn: s.isThrashing)
-                Stat(label: "CPU", value: "\(Int(s.cpuUsage))%", warn: s.cpuUsage > 85)
-                Stat(label: "Squeezed", value: fmtBytes(s.compressedOriginal), warn: false)
-                    .help("Data macOS has compressed to fit in RAM. Compressing/decompressing costs CPU.")
-            }
+            MemoryBar(s: s).frame(height: 8)
+                .help("Apps \(fmtBytes(s.app)) · System \(fmtBytes(s.wired)) · Compressed \(fmtBytes(s.compressed)) of \(fmtBytes(s.total))")
         }
+    }
+
+    private func subtitle(_ s: MemorySnapshot) -> String {
+        var parts = ["\(fmtBytes(s.used)) of \(fmtBytes(s.total)) used"]
+        if Double(s.swapUsed) > Config.tipSwapUsed { parts.append("\(fmtBytes(s.swapUsed)) on disk") }
+        if s.cpuUsage > 70 { parts.append("CPU \(Int(s.cpuUsage))%") }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -78,87 +101,31 @@ struct MemoryBar: View {
     var body: some View {
         GeometryReader { geo in
             let total = max(Double(s.total), 1)
-            let w = geo.size.width
-            HStack(spacing: 1) {
-                Rectangle().fill(.blue).frame(width: w * min(1, Double(s.app) / total))
-                Rectangle().fill(.orange).frame(width: w * min(1, Double(s.wired) / total))
-                Rectangle().fill(.purple).frame(width: w * min(1, Double(s.compressed) / total))
-                Rectangle().fill(.quaternary)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 3))
-        }
-    }
-}
-
-struct Legend: View {
-    let color: Color; let label: String; let value: UInt64
-    var body: some View {
-        HStack(spacing: 4) {
-            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 8, height: 8)
-            Text("\(label) \(fmtBytes(value))").font(.caption).foregroundStyle(.secondary)
-        }
-    }
-}
-
-struct Stat: View {
-    let label: String; let value: String; let warn: Bool
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-            Text(value).font(.callout.monospacedDigit().weight(.medium)).foregroundStyle(warn ? .red : .primary)
-        }
-    }
-}
-
-struct Sparkline: View {
-    let values: [Double]; let color: Color
-    var body: some View {
-        GeometryReader { geo in
-            let n = max(values.count - 1, 1)
-            let pts = values.enumerated().map { i, v in
-                CGPoint(x: geo.size.width * CGFloat(i) / CGFloat(n), y: geo.size.height * (1 - CGFloat(min(v, 100)) / 100))
-            }
-            ZStack {
-                Path { p in
-                    guard let first = pts.first else { return }
-                    p.move(to: CGPoint(x: first.x, y: geo.size.height))
-                    pts.forEach { p.addLine(to: $0) }
-                    p.addLine(to: CGPoint(x: pts.last!.x, y: geo.size.height))
-                }.fill(color.opacity(0.15))
-                Path { p in
-                    guard let first = pts.first else { return }
-                    p.move(to: first)
-                    pts.dropFirst().forEach { p.addLine(to: $0) }
-                }.stroke(color, lineWidth: 1.5)
+            let used = min(1, Double(s.used) / total)
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule().fill(s.health.color.gradient).frame(width: geo.size.width * used)
             }
         }
-        .help("Memory pressure over the last 3 minutes")
     }
 }
 
 // MARK: - Tips
 
-struct TipsView: View {
-    @EnvironmentObject var m: Monitor
+struct TipCard: View {
+    let tip: Tip
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(m.tips) { tip in
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: tip.icon).foregroundStyle(.orange).frame(width: 16)
-                    Text(tip.text).font(.callout).fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                    if let title = tip.actionTitle, let action = tip.action {
-                        if tip.confirm {
-                            ConfirmButton(title: title, action: action)
-                        } else {
-                            Button(title, action: action).controlSize(.small)
-                        }
-                    }
-                }
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.08)))
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: tip.icon).foregroundStyle(.orange).frame(width: 16).padding(.top, 1)
+            Text(tip.text).font(.callout).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            if let title = tip.actionTitle, let action = tip.action {
+                if tip.confirm { ConfirmButton(title: title, action: action) }
+                else { Button(title, action: action).controlSize(.small) }
             }
         }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.09)))
     }
 }
 
@@ -174,18 +141,18 @@ struct GroupRow: View {
     var body: some View {
         VStack(spacing: 1) {
             HStack(spacing: 8) {
-                if group.kind == .claudeAll {
-                    Image(systemName: "chevron.right")
-                        .rotationEffect(.degrees(expanded ? 90 : 0))
-                        .font(.caption.weight(.bold)).foregroundStyle(.secondary).frame(width: 10)
-                }
                 GroupIcon(group: group).frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(group.name).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.middle)
                     Text(group.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
+                if group.kind == .claudeAll {
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+                }
                 Spacer(minLength: 4)
-                if hovering || group.kind == .claudeAll { actions }
+                if hovering { actions }
                 Text(fmtBytes(group.memory))
                     .font(.callout.monospacedDigit().weight(.semibold))
                     .foregroundStyle(memColor)
@@ -298,55 +265,64 @@ struct ConfirmButton: View {
     }
 }
 
-// MARK: - Footer
+// MARK: - Settings
 
-struct FooterView: View {
+struct SettingsView: View {
     @EnvironmentObject var m: Monitor
+    let close: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle(isOn: $m.guardEnabled) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Auto-free memory when critical").font(.callout)
-                    Text(m.expendable.isEmpty
-                         ? "Mark apps with ⚡︎ (hover a row) to allow auto-quit. Nothing else is ever touched."
-                         : "Will quit ⚡︎ apps, biggest first, when your Mac is about to freeze.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Button(action: close) { Label("Back", systemImage: "chevron.left") }.buttonStyle(.borderless)
+                Spacer()
+                Text("Settings").font(.headline)
+                Spacer()
+                Color.clear.frame(width: 50, height: 1)
             }
-            .toggleStyle(.switch).controlSize(.small)
-            HStack(spacing: 6) {
-                Toggle(isOn: $m.autoPauseEnabled) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Auto-pause idle Claude sessions").font(.callout)
-                        Text("Conversations stay saved. Sessions running a command or background job are never paused.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.switch).controlSize(.small)
+            setting("Pause idle Claude sessions",
+                    "Conversations stay saved. Sessions running something are never paused.",
+                    isOn: $m.autoPauseEnabled) {
                 Picker("", selection: $m.autoPauseMinutes) {
-                    ForEach(Config.autoPauseChoices, id: \.self) { Text("\($0) min").tag($0) }
+                    ForEach(Config.autoPauseChoices, id: \.self) { Text("after \($0) min").tag($0) }
                 }
-                .labelsHidden().controlSize(.small).frame(width: 78)
-                .disabled(!m.autoPauseEnabled)
+                .labelsHidden().controlSize(.small).frame(width: 110).disabled(!m.autoPauseEnabled)
             }
-            Toggle("Warn me when memory runs out", isOn: $m.alertsEnabled).toggleStyle(.switch).controlSize(.small).font(.callout)
-            Toggle("Open at login", isOn: Binding(get: { m.launchAtLogin }, set: { m.launchAtLogin = $0 }))
-                .toggleStyle(.switch).controlSize(.small).font(.callout)
+            setting("Free memory automatically",
+                    m.expendable.isEmpty ? "When memory is critical, quits apps you mark with ⚡ (hover an app row)."
+                                         : "When memory is critical, quits your ⚡ apps, biggest first.",
+                    isOn: $m.guardEnabled) { EmptyView() }
+            setting("Warn me when memory runs out", nil, isOn: $m.alertsEnabled) { EmptyView() }
+            setting("Open at login", nil, isOn: Binding(get: { m.launchAtLogin }, set: { m.launchAtLogin = $0 })) { EmptyView() }
 
             if !m.actionLog.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Recent actions").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     ForEach(m.actionLog, id: \.self) { Text($0).font(.caption.monospaced()).foregroundStyle(.secondary) }
                 }
             }
+            Divider()
             HStack {
-                Button("Activity Monitor") {
+                Button("Open Activity Monitor") {
                     NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
                 }
                 Spacer()
                 Button("Quit Mac Memory Monitor") { NSApp.terminate(nil) }
             }
             .controlSize(.small)
+        }
+    }
+
+    private func setting<Extra: View>(_ title: String, _ detail: String?, isOn: Binding<Bool>,
+                                      @ViewBuilder extra: () -> Extra) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.callout)
+                if let detail { Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                extra()
+            }
+            Spacer()
+            Toggle("", isOn: isOn).labelsHidden().toggleStyle(.switch).controlSize(.small)
         }
     }
 }
