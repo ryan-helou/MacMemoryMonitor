@@ -24,7 +24,10 @@ struct ProcGroup: Identifiable {
     var cwd: String?
     var children: [ProcGroup] = []
     var fromDesktop = false        // session started by the Claude desktop app (resumable from its sidebar)
-    var runningTask: String?       // a command/background job the session started after launch → never auto-pause
+    var runningTask: String?
+    var sessionTitle: String?      // the title shown in the Claude sidebar
+    var lastActivity: Date?        // last message in or out
+    var transcriptBytes: UInt64 = 0       // a command/background job the session started after launch → never auto-pause
     var processCount: Int { pids.count }
 }
 
@@ -34,6 +37,7 @@ struct ScanResult {
     var groups: [ProcGroup] = []
     var hogs: [Hog] = []
     var spotlightCPU: Double = 0
+    var claudeBinaries = 0      // processes that look like Claude Code, recognised or not
 }
 
 private struct RawProc {
@@ -64,6 +68,7 @@ final class ProcessScanner {
     private var argsCache: [pid_t: String] = [:]
     private var cwdCache: [pid_t: String] = [:]
     private var bundleIDCache: [String: String] = [:]
+    private let sessionLookup = ClaudeSessionLookup()
     private let timebase: mach_timebase_info_data_t
     private let myPid = getpid()
 
@@ -145,6 +150,10 @@ final class ProcessScanner {
             let late = groups[id]!.pids.compactMap { procs[$0] }
                 .filter { $0.pid != p.pid && $0.start.timeIntervalSince(p.start) > Config.sessionTaskGrace }
             if let task = late.max(by: { $0.start < $1.start }) { groups[id]!.runningTask = task.name }
+            let info = sessionLookup.info(pid: p.pid) { processArgs(p.pid) }
+            groups[id]!.sessionTitle = info.title
+            groups[id]!.lastActivity = info.lastActivity
+            groups[id]!.transcriptBytes = info.transcriptBytes
         }
 
         // 2. Apps (everything inside one .app bundle) and macOS itself.
@@ -191,6 +200,7 @@ final class ProcessScanner {
             addSubtree(root.pid, to: id)
         }
 
+        sessionLookup.forget(except: Set(procs.keys))
         var result = ScanResult()
         result.groups = groups.values.filter { $0.memory > 0 || $0.kind == .claudeSession }
         result.hogs = procs.values
@@ -198,6 +208,7 @@ final class ProcessScanner {
             .sorted { $0.cpu > $1.cpu }
             .prefix(3)
             .map { Hog(pid: $0.pid, name: describe($0), cpu: $0.cpu) }
+        result.claudeBinaries = procs.values.filter { $0.path.contains(sessionMarker) && $0.name == "claude" }.count
         result.spotlightCPU = procs.values
             .filter { $0.name.hasPrefix("mds") || $0.name.hasPrefix("mdworker") || $0.name == "corespotlightd" }
             .reduce(0) { $0 + $1.cpu }
@@ -310,7 +321,7 @@ private func cString<T>(_ tuple: T) -> String {
 }
 
 /// argv via KERN_PROCARGS2 (only works for our own user's processes, which is all we need).
-private func processArgs(_ pid: pid_t) -> [String] {
+func processArgs(_ pid: pid_t) -> [String] {
     var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
     var size = 0
     guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 4 else { return [] }

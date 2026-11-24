@@ -47,6 +47,45 @@ enum Config {
     static let autoFreeCooldown: TimeInterval = 30
     static let alertCooldown: TimeInterval = 15 * 60
 
+    // History, leaks, forecasts
+    static let jumpEventSize = 600 * MB          // log "X jumped by…" events above this
+    static let leakGrowth = 0.8 * GB             // steady growth worth a "restart it" tip
+    static let typicalSessionCost = 300 * MB     // used for "room for N more sessions" when none are open
+
+    // Habits
+    static let unusedAppHours: Double = 3         // apps not brought to the front for this long → offer to quit
+    static let unusedAppMinMemory = 200 * MB
+    static let restartReminderDays: Double = 3
+    static let restartReminderSwap = 3 * GB
+    static let nightlyRestartHours = 3..<5        // when "Restart Claude overnight" may run
+    static let hugeSessionMemory = 600 * MB
+    static let hugeTranscript: UInt64 = 150_000_000
+    static let mcpServerCost = 26 * MB            // rough memory per local MCP server process
+
+    // Disk screen
+    static let diskScanFolders = ["Downloads", "Movies", "Desktop", "Library/Developer/Xcode/DerivedData",
+                                  "Library/Developer/CoreSimulator/Devices", "Library/Caches"]
+    static let diskMinItem = 300 * MB
+
+    /// Plain-language "what is this?" shown when you hover an app.
+    static let explanations: [String: String] = [
+        "com.google.Chrome": "Web browser. Each tab and extension runs separately. Memory Saver unloads idle tabs.",
+        "com.anthropic.claudefordesktop": "The Claude app. Its window grows the longer it stays open; restarting it is safe — sessions are saved.",
+        "com.spotify.client": "Music player built on a browser engine. Safe to quit when you're not listening.",
+        "com.hnc.Discord": "Chat app built on a browser engine. Safe to quit; the web version uses less.",
+        "com.microsoft.teams2": "Chat and meetings, built on a browser engine. Safe to quit outside meetings.",
+        "com.tinyspeck.slackmacgap": "Chat app built on a browser engine. Safe to quit; the web version uses less.",
+        "com.microsoft.VSCode": "Code editor built on a browser engine; extensions add their own processes.",
+        "com.apple.Safari": "Web browser. Close tabs you aren't using.",
+        "com.google.drivefs": "Syncs Google Drive files. Safe to quit when you don't need syncing.",
+        "com.apple.dt.Xcode": "Apple's developer tool. Uses a lot while building; quit it when you're done.",
+        "com.figma.Desktop": "Design app built on a browser engine. Big files use a lot of memory.",
+        "notion.id": "Notes app built on a browser engine. Safe to quit; the web version uses less.",
+        "us.zoom.xos": "Video calls. Safe to quit outside calls.",
+        "com.apple.MobileSMS": "Messages. Usually small; photos in long chats can add up.",
+        "com.docker.docker": "Runs a Linux virtual machine. Quit it when you're not using containers.",
+    ]
+
     // Grouping
     static let shellNames: Set<String> = ["zsh", "bash", "sh", "fish", "login", "tmux", "screen", "sudo", "caffeinate"]
     static let terminalApps: Set<String> = ["Terminal.app", "iTerm.app", "Warp.app", "Ghostty.app", "kitty.app", "Alacritty.app", "WezTerm.app"]

@@ -12,7 +12,14 @@ extension MemorySnapshot.Health {
 
 struct PopoverView: View {
     @EnvironmentObject var m: Monitor
-    @State private var showSettings = false
+    @State private var screen: Screen = {
+        switch CommandLine.arguments.first(where: { $0.hasPrefix("--screen=") })?.dropFirst(9) {
+        case "history": .history
+        case "disk": .disk
+        case "settings": .settings
+        default: .main
+        }
+    }()
     @State private var showAll = false
     @State private var showAllTips = false
 
@@ -20,10 +27,16 @@ struct PopoverView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if showSettings {
-                SettingsView(close: { showSettings = false })
+            if !m.onboarded && !Demo.on && !CommandLine.arguments.contains(where: { $0.hasPrefix("--screen=") }) {
+                OnboardingView()
+            } else if screen == .settings {
+                SettingsView(close: { screen = .main })
+            } else if screen == .history {
+                HistoryView(close: { screen = .main })
+            } else if screen == .disk {
+                DiskView(close: { screen = .main })
             } else {
-                HeaderView(openSettings: { showSettings = true })
+                HeaderView(go: { screen = $0 })
                 if let first = m.tips.first {
                     TipCard(tip: first)
                     if m.tips.count > 1 {
@@ -39,6 +52,7 @@ struct PopoverView: View {
         }
         .padding(16)
         .frame(width: 380)
+        .background(Demo.on ? Color(nsColor: .windowBackgroundColor) : .clear)
     }
 
     @ViewBuilder private var list: some View {
@@ -65,7 +79,7 @@ struct PopoverView: View {
 
 struct HeaderView: View {
     @EnvironmentObject var m: Monitor
-    let openSettings: () -> Void
+    let go: (Screen) -> Void
 
     var body: some View {
         let s = m.mem
@@ -80,8 +94,12 @@ struct HeaderView: View {
                     Text(subtitle(s)).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(action: openSettings) { Image(systemName: "gearshape").font(.title3) }
-                    .buttonStyle(.borderless).foregroundStyle(.secondary).help("Settings")
+                HStack(spacing: 10) {
+                    Button { go(.history) } label: { Image(systemName: "clock.arrow.circlepath") }.help("History")
+                    Button { go(.disk) } label: { Image(systemName: "internaldrive") }.help("Free up disk space")
+                    Button { go(.settings) } label: { Image(systemName: "gearshape") }.help("Settings")
+                }
+                .font(.title3).buttonStyle(.borderless).foregroundStyle(.secondary)
             }
             MemoryBar(s: s).frame(height: 8)
                 .help("Apps \(fmtBytes(s.app)) · System \(fmtBytes(s.wired)) · Compressed \(fmtBytes(s.compressed)) of \(fmtBytes(s.total))")
@@ -181,7 +199,7 @@ struct GroupRow: View {
         switch group.kind {
         case .claudeSession: return group.cwd ?? group.name
         case .script: return "PID \(group.rootPid)"
-        case .app: return group.bundlePath ?? group.name
+        case .app: return Config.explanations[group.bundleID ?? ""] ?? group.bundlePath ?? group.name
         default: return ""
         }
     }
@@ -280,20 +298,51 @@ struct SettingsView: View {
                 Spacer()
                 Color.clear.frame(width: 50, height: 1)
             }
-            setting("Pause idle Claude sessions",
+            setting("Pause unused Claude sessions",
                     "Conversations stay saved. Sessions running something are never paused.",
                     isOn: $m.autoPauseEnabled) {
-                Picker("", selection: $m.autoPauseMinutes) {
-                    ForEach(Config.autoPauseChoices, id: \.self) { Text("after \($0) min").tag($0) }
+                HStack(spacing: 6) {
+                    Picker("", selection: $m.smartPause) {
+                        Text("after").tag(false)
+                        Text("only when memory is tight").tag(true)
+                    }
+                    .labelsHidden().frame(width: m.smartPause ? 190 : 70)
+                    if !m.smartPause {
+                        Picker("", selection: $m.autoPauseMinutes) {
+                            ForEach(Config.autoPauseChoices, id: \.self) { Text("\($0) min").tag($0) }
+                        }
+                        .labelsHidden().frame(width: 80)
+                    }
                 }
-                .labelsHidden().controlSize(.small).frame(width: 110).disabled(!m.autoPauseEnabled)
+                .controlSize(.small).disabled(!m.autoPauseEnabled)
+                Stepper("Always keep my \(m.keepRecentSessions) newest", value: $m.keepRecentSessions, in: 0...5)
+                    .font(.caption).controlSize(.small).disabled(!m.autoPauseEnabled)
             }
+            setting("Restart Claude overnight",
+                    "Between 3 and 5 AM, if the Claude app has grown big and no session is busy.",
+                    isOn: $m.nightlyClaudeRestart) { EmptyView() }
             setting("Free memory automatically",
                     m.expendable.isEmpty ? "When memory is critical, quits apps you mark with ⚡ (hover an app row)."
                                          : "When memory is critical, quits your ⚡ apps, biggest first.",
                     isOn: $m.guardEnabled) { EmptyView() }
             setting("Warn me when memory runs out", nil, isOn: $m.alertsEnabled) { EmptyView() }
             setting("Open at login", nil, isOn: Binding(get: { m.launchAtLogin }, set: { m.launchAtLogin = $0 })) { EmptyView() }
+            HStack {
+                Text("Menu bar shows").font(.callout)
+                Spacer()
+                Picker("", selection: $m.menuBarStyle) {
+                    Text("Pressure %").tag("percent")
+                    Text("Memory free").tag("free")
+                    Text("Lag (disk reads)").tag("lag")
+                    Text("Dot only").tag("dot")
+                }
+                .labelsHidden().controlSize(.small).frame(width: 150)
+            }
+            setting("Check for updates weekly", m.updateStatus ?? "Asks GitHub once a week. Off = the app never goes online.",
+                    isOn: $m.weeklyUpdateCheck) {
+                Button("Check now") { m.checkForUpdates(manual: true) }.controlSize(.small)
+            }
+            Text("Tip: press ⌥⌘M anywhere to open this panel.").font(.caption).foregroundStyle(.secondary)
 
             if !m.actionLog.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
@@ -324,5 +373,175 @@ struct SettingsView: View {
             Spacer()
             Toggle("", isOn: isOn).labelsHidden().toggleStyle(.switch).controlSize(.small)
         }
+    }
+}
+
+enum Screen { case main, history, disk, settings }
+
+struct ScreenHeader: View {
+    let title: String; let close: () -> Void
+    var body: some View {
+        HStack {
+            Button(action: close) { Label("Back", systemImage: "chevron.left") }.buttonStyle(.borderless)
+            Spacer(); Text(title).font(.headline); Spacer()
+            Color.clear.frame(width: 50, height: 1)
+        }
+    }
+}
+
+// MARK: - History
+
+struct HistoryView: View {
+    @EnvironmentObject var m: Monitor
+    let close: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScreenHeader(title: "Last 24 hours", close: close)
+            let pts = m.history.points
+            if pts.count < 2 {
+                Text("Collecting — the graph fills in over the next hour.").font(.callout).foregroundStyle(.secondary)
+            } else {
+                HistoryChart(points: pts).frame(height: 110)
+                HStack {
+                    Text(pts.first!.t, style: .time); Spacer(); Text("now")
+                }.font(.caption2).foregroundStyle(.secondary)
+            }
+            Text("What happened").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            let events = m.history.events.reversed().prefix(40)
+            if events.isEmpty {
+                Text("Nothing notable yet. Lag, big jumps and actions show up here.").font(.callout).foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(events)) { e in
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: icon(e.kind)).foregroundStyle(color(e.kind)).frame(width: 14)
+                                Text(e.t, style: .time).font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 58, alignment: .leading)
+                                Text(e.text).font(.caption).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 260)
+            }
+        }
+    }
+    private func icon(_ k: String) -> String { ["lag": "tortoise.fill", "ok": "checkmark.circle", "jump": "arrow.up.right", "action": "hand.tap"][k] ?? "circle" }
+    private func color(_ k: String) -> Color { ["lag": .red, "ok": .green, "jump": .orange][k] ?? .secondary }
+}
+
+struct HistoryChart: View {
+    let points: [HistoryPoint]
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            let t0 = points.first!.t.timeIntervalSince1970, span = max(points.last!.t.timeIntervalSince1970 - t0, 1)
+            let xy = points.map { CGPoint(x: w * CGFloat(($0.t.timeIntervalSince1970 - t0) / span), y: h * (1 - CGFloat($0.pressure) / 100)) }
+            ZStack(alignment: .topLeading) {
+                ForEach(Array(points.enumerated()), id: \.offset) { i, p in
+                    if p.swapIn > Config.thrashingSwapReadRate {
+                        Rectangle().fill(Color.red.opacity(0.18)).frame(width: max(2, w / CGFloat(points.count)), height: h).offset(x: xy[i].x)
+                    }
+                }
+                Path { path in path.move(to: CGPoint(x: 0, y: h)); xy.forEach { path.addLine(to: $0) }; path.addLine(to: CGPoint(x: w, y: h)) }
+                    .fill(Color.accentColor.opacity(0.15))
+                Path { path in path.move(to: xy[0]); xy.dropFirst().forEach { path.addLine(to: $0) } }
+                    .stroke(Color.accentColor, lineWidth: 1.5)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.4)))
+        .help("Memory pressure. Red bands = lag (reading lots back from disk).")
+    }
+}
+
+// MARK: - Disk
+
+struct DiskView: View {
+    let close: () -> Void
+    @State private var items: [DiskItem]?
+    @State private var trashed: Set<String> = []
+    @State private var freed: UInt64 = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScreenHeader(title: "Free up disk space", close: close)
+            Text("Swap lives on disk, so a nearly full disk makes lag worse. These are the biggest items in Downloads, Movies, Desktop and developer caches. Removing moves them to the Trash.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let items {
+                if items.isEmpty { Text("Nothing big found. 👍").font(.callout) }
+                ScrollView {
+                    VStack(spacing: 2) {
+                        ForEach(items.filter { !trashed.contains($0.id) }) { item in
+                            HStack {
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path)).resizable().frame(width: 20, height: 20)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(item.url.lastPathComponent).font(.callout).lineLimit(1).truncationMode(.middle)
+                                    Text(item.url.deletingLastPathComponent().path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Spacer()
+                                Text(fmtBytes(item.size)).font(.callout.monospacedDigit())
+                                Button { NSWorkspace.shared.activateFileViewerSelecting([item.url]) } label: { Image(systemName: "magnifyingglass") }
+                                    .buttonStyle(.borderless).help("Show in Finder")
+                                ConfirmButton(title: "Trash") {
+                                    DiskScanner.trash(item) { ok in if ok { trashed.insert(item.id); freed += item.size } }
+                                }
+                            }
+                            .padding(.vertical, 3)
+                        }
+                    }
+                }
+                .frame(maxHeight: 320)
+                if freed > 0 { Text("\(fmtBytes(freed)) moved to the Trash — empty it to get the space back.").font(.caption).foregroundStyle(.green) }
+            } else {
+                HStack { ProgressView().controlSize(.small); Text("Looking for big files…").font(.callout).foregroundStyle(.secondary) }
+            }
+        }
+        .task {
+            guard items == nil else { return }
+            items = Demo.on ? Demo.diskItems : await Task.detached(priority: .utility) { DiskScanner.scan() }.value
+        }
+    }
+}
+
+// MARK: - First run
+
+struct OnboardingView: View {
+    @EnvironmentObject var m: Monitor
+    @State private var step = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            switch step {
+            case 0:
+                Text("Welcome to Mac Memory Monitor").font(.title3.weight(.semibold))
+                Text("It shows how close your Mac is to running out of memory, which is what makes it lag, and helps you fix it.").font(.callout)
+                legend(.green, "Plenty of memory")
+                legend(.orange, "Under strain — closing something will help")
+                legend(.red, "Out of memory — this is the lag you feel")
+            case 1:
+                Text("Let it help automatically?").font(.title3.weight(.semibold))
+                Toggle("Pause Claude Code sessions I haven't used in 15 min (conversations stay saved)", isOn: $m.autoPauseEnabled)
+                Toggle("Warn me when memory runs out", isOn: $m.alertsEnabled)
+                Text("You can mark apps that are OK to quit automatically later by hovering them and clicking ⚡.").font(.caption).foregroundStyle(.secondary)
+            default:
+                Text("Start it automatically?").font(.title3.weight(.semibold))
+                Toggle("Open at login", isOn: Binding(get: { m.launchAtLogin }, set: { m.launchAtLogin = $0 }))
+                Text("Press ⌥⌘M anywhere to open this panel. Everything stays on your Mac; the app never goes online unless you turn on update checks.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                if step > 0 { Button("Back") { step -= 1 } }
+                Spacer()
+                Button(step < 2 ? "Next" : "Done") { if step < 2 { step += 1 } else { m.onboarded = true } }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .toggleStyle(.checkbox)
+    }
+
+    private func legend(_ c: Color, _ t: String) -> some View {
+        HStack(spacing: 8) { Circle().fill(c).frame(width: 10, height: 10); Text(t).font(.callout) }
     }
 }

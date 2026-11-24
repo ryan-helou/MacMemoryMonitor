@@ -14,6 +14,11 @@
 
 When a Mac runs out of memory, it starts borrowing space from the disk, and everything gets sluggish. This app shows how close you are to that point and which apps are using the most memory, counted the same way Apple's Activity Monitor does. I built it for Macs with 8 GB of memory running lots of browser tabs, chat apps and AI coding sessions at once. It runs on macOS 14 or newer and barely uses any memory itself.
 
+<p align="center">
+  <img src="docs/main.png" width="300" alt="The panel: memory pressure, a tip, and the apps using the most memory">
+  <img src="docs/history.png" width="300" alt="History: 24 hours of memory with lag periods and events">
+</p>
+
 ## What you can do with it
 
 - See your memory pressure at a glance in the menu bar, as a percentage that turns green, orange or red.
@@ -23,6 +28,11 @@ When a Mac runs out of memory, it starts borrowing space from the disk, and ever
 - Automatically pause Claude Code sessions you haven't touched in a while (15 minutes by default). It never pauses a session that's still running something in the background.
 - Get plain tips based on what's open, such as turning on Chrome's Memory Saver, plus a warning when memory runs out.
 - Optionally let it close apps you've marked as safe to close, biggest first, when memory gets critical.
+- See the last 24 hours: when your Mac lagged, which app jumped, and what was paused or quit.
+- Get told when an app's memory keeps climbing (a leak), with a one-click restart.
+- Find big files in Downloads, Movies and developer caches and move them to the Trash.
+- See how many more Claude sessions fit, each session's real title and when you last used it, and which MCP servers load in every session.
+- Act straight from the "out of memory" notification, and press ⌥⌘M anywhere to open the panel.
 
 ## Get it
 

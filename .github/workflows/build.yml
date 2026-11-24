@@ -1,0 +1,16 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal app
+        run: ./build.sh --package
+      - name: Smoke test
+        run: '"build/Mac Memory Monitor.app/Contents/MacOS/MacMonitor" --dump | head -5'
