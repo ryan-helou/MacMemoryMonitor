@@ -2,7 +2,7 @@
 
 # Mac Memory Monitor
 
-**A small Mac app that sits in the menu bar and shows why your computer is slowing down, then helps you fix it.**
+**A lightweight Mac app that sits in the menu bar and shows why your computer is slowing down, then helps you fix it.**
 
 <a href="#get-it"><img alt="Install on macOS 14 or newer" src="https://img.shields.io/badge/Install-macOS_14+-24292f?style=for-the-badge"></a>
 
@@ -12,7 +12,7 @@
 
 <br>
 
-When a Mac runs out of memory, it starts borrowing space from the disk, and everything gets sluggish. This app shows how close you are to that point and which apps are using the most memory, counted the same way Apple's Activity Monitor does. It was made for Macs with 8 GB of memory running lots of browser tabs, chat apps and AI coding sessions at once. It runs on macOS 14 or newer and barely uses any memory itself.
+When a Mac runs out of memory, it starts borrowing space from the disk, and everything gets sluggish. This app shows how close you are to that point and which apps are using the most memory, counted the same way Apple's Activity Monitor does. I built it for Macs with 8 GB of memory running lots of browser tabs, chat apps and AI coding sessions at once. It runs on macOS 14 or newer and barely uses any memory itself.
 
 ## What you can do with it
 
