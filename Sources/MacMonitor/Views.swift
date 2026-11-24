@@ -103,11 +103,11 @@ struct HeaderView: View {
                 }
                 Spacer()
                 HStack(spacing: 10) {
-                    Button { go(.history) } label: { Image(systemName: "clock.arrow.circlepath") }.help("History")
-                    Button { go(.disk) } label: { Image(systemName: "internaldrive") }.help("Free up disk space")
-                    Button { go(.settings) } label: { Image(systemName: "gearshape") }.help("Settings")
+                    IconButton(icon: "clock.arrow.circlepath", label: "History") { go(.history) }
+                    IconButton(icon: "internaldrive", label: "Disk") { go(.disk) }
+                    IconButton(icon: "gearshape", label: "Settings") { go(.settings) }
                 }
-                .font(.title3).buttonStyle(.borderless).foregroundStyle(.secondary)
+                .font(.title3)
             }
             MemoryBar(s: s).frame(height: 8)
                 .help("Apps \(fmtBytes(s.app)) · System \(fmtBytes(s.wired)) · Compressed \(fmtBytes(s.compressed)) of \(fmtBytes(s.total))")
@@ -237,7 +237,7 @@ struct GroupRow: View {
                 ConfirmButton(title: "Pause") { m.endSession(group) }
                     .help("Stops this session to free its memory. The conversation stays saved — reopen it from the Claude sidebar to pick up where you left off. Don't pause a session that's mid-task.")
             case .script where group.id.hasPrefix("vm"):
-                Image(systemName: "info.circle").foregroundStyle(.secondary)
+                IconButton(icon: "info.circle", label: "Can't stop") {}
                     .help("A virtual machine started by an app. Quit or idle that app's feature to free it — stopping it directly can break the app.")
             case .script:
                 ConfirmButton(title: "Stop") { m.killScript(group) }
@@ -502,8 +502,7 @@ struct DiskView: View {
                                 }
                                 Spacer()
                                 Text(fmtBytes(item.size)).font(.callout.monospacedDigit())
-                                Button { NSWorkspace.shared.activateFileViewerSelecting([item.url]) } label: { Image(systemName: "magnifyingglass") }
-                                    .buttonStyle(.borderless).help("Show in Finder")
+                                IconButton(icon: "magnifyingglass", label: "Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.url]) }
                                 ConfirmButton(title: "Trash") {
                                     DiskScanner.trash(item) { ok in if ok { trashed.insert(item.id); freed += item.size } }
                                 }
