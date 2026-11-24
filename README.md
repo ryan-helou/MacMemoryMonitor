@@ -30,6 +30,8 @@ When a Mac runs out of memory, it starts borrowing space from the disk, and ever
 
 The first time you open it, macOS warns that it can't check the app, because it isn't notarized by Apple. Click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. You only need to do this once.
 
+Don't see it in the menu bar? On macOS 26, open **System Settings → Menu Bar** and switch **Mac Memory Monitor** on under **Allow in the Menu Bar**. If your menu bar is very full, it may also be hidden behind the notch or other icons.
+
 ### Or build it yourself
 
 Open the Terminal app and paste these three lines. It builds the app, puts it in your Applications folder and opens it. You need Apple's free developer tools; if they're missing, your Mac will offer to install them.
