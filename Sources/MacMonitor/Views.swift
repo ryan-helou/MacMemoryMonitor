@@ -167,7 +167,7 @@ struct GroupRow: View {
     var body: some View {
         VStack(spacing: 1) {
             HStack(spacing: 8) {
-                GroupIcon(group: group).frame(width: 22, height: 22)
+                GroupIcon(group: group).frame(width: 22, height: 22).help(helpText)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(group.name).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.middle)
                     Text(group.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -178,11 +178,15 @@ struct GroupRow: View {
                         .font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
                 }
                 Spacer(minLength: 4)
-                if hovering { actions }
-                Text(fmtBytes(group.memory))
-                    .font(.callout.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(memColor)
-                    .frame(width: 62, alignment: .trailing)
+                // On hover the buttons take the memory number's place, so the name never gets squeezed.
+                ZStack(alignment: .trailing) {
+                    Text(fmtBytes(group.memory))
+                        .font(.callout.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(memColor)
+                        .opacity(hovering && hasActions ? 0 : 1)
+                    if hovering { actions }
+                }
+                .frame(width: 92, alignment: .trailing)
             }
             .padding(.vertical, 5).padding(.horizontal, 6)
             .padding(.leading, indent ? 22 : 0)
@@ -190,7 +194,6 @@ struct GroupRow: View {
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .onTapGesture { if group.kind == .claudeAll { withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() } } }
-            .help(helpText)
 
             if group.kind == .claudeAll && expanded {
                 ForEach(group.children) { GroupRow(group: $0, indent: true) }
@@ -212,8 +215,16 @@ struct GroupRow: View {
         }
     }
 
+    private var hasActions: Bool {
+        switch group.kind {
+        case .app: return m.canQuit(group)
+        case .claudeSession, .script: return true
+        default: return false
+        }
+    }
+
     @ViewBuilder private var actions: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 10) {
             switch group.kind {
             case .app where m.canQuit(group):
                 let marked = m.expendable.contains(group.bundleID ?? "-")
@@ -223,9 +234,12 @@ struct GroupRow: View {
                 .buttonStyle(.borderless)
                 .help(marked ? "Will be auto-quit when memory is critical (if Auto-free is on). Click to unmark."
                              : "Allow Mac Monitor to auto-quit this app when memory is critical")
-                Button("Relaunch") { m.relaunch(group) }.controlSize(.small)
-                    .help("Quit and reopen — gives back memory the app has leaked over time")
-                Button("Quit") { m.quit(group) }.controlSize(.small)
+                Button { m.relaunch(group) } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless)
+                    .help("Restart — quit and reopen to give back memory it has built up")
+                Button { m.quit(group) } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary)
+                    .help("Quit \(group.name) (right-click for Force Quit)")
                     .contextMenu { Button("Force Quit") { m.forceQuit(group) } }
             case .claudeSession:
                 ConfirmButton(title: "Pause") { m.endSession(group) }
