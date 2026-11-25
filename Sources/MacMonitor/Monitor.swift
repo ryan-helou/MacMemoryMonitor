@@ -24,7 +24,8 @@ final class Monitor: ObservableObject {
     @Published var smartPause: Bool { didSet { UserDefaults.standard.set(smartPause, forKey: "smartPause") } }
     @Published var keepRecentSessions: Int { didSet { UserDefaults.standard.set(keepRecentSessions, forKey: "keepRecentSessions") } }
     @Published var nightlyClaudeRestart: Bool { didSet { UserDefaults.standard.set(nightlyClaudeRestart, forKey: "nightlyClaudeRestart") } }
-    @Published var weeklyUpdateCheck: Bool { didSet { UserDefaults.standard.set(weeklyUpdateCheck, forKey: "weeklyUpdateCheck") } }
+    /// Days between automatic update checks: 0 = never (the app then never goes online), 1 = daily, 7 = weekly.
+    @Published var updateCheckDays: Int { didSet { UserDefaults.standard.set(updateCheckDays, forKey: "updateCheckDays") } }
     @Published var menuBarStyle: String { didSet { UserDefaults.standard.set(menuBarStyle, forKey: "menuBarStyle") } }
     @Published var onboarded: Bool { didSet { UserDefaults.standard.set(onboarded, forKey: "onboarded") } }
     let history = History()
@@ -65,7 +66,7 @@ final class Monitor: ObservableObject {
         smartPause = d.bool(forKey: "smartPause")
         keepRecentSessions = d.object(forKey: "keepRecentSessions") as? Int ?? 1
         nightlyClaudeRestart = d.bool(forKey: "nightlyClaudeRestart")
-        weeklyUpdateCheck = d.bool(forKey: "weeklyUpdateCheck")
+        updateCheckDays = d.object(forKey: "updateCheckDays") as? Int ?? (d.bool(forKey: "weeklyUpdateCheck") ? 7 : 0)
         menuBarStyle = d.string(forKey: "menuBarStyle") ?? "percent"
         onboarded = d.bool(forKey: "onboarded")
     }
@@ -80,9 +81,7 @@ final class Monitor: ObservableObject {
             let id = (n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
             Task { @MainActor in if let id { self?.lastFront[id] = Date() } }
         }
-        if weeklyUpdateCheck, Date().timeIntervalSince(UserDefaults.standard.object(forKey: "lastUpdateCheck") as? Date ?? .distantPast) > 7 * 86_400 {
-            checkForUpdates(manual: false)
-        }
+        checkForUpdatesIfDue()
         timer = Timer.scheduledTimer(withTimeInterval: Config.sampleInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.onTick() }
         }
@@ -91,6 +90,7 @@ final class Monitor: ObservableObject {
     private func onTick() {
         sampleMemory()
         tick += 1
+        if tick % 1800 == 0 { checkForUpdatesIfDue() }   // hourly look at whether a check is due
         // Scan processes often while you're looking, rarely while you're not — the monitor must stay cheap.
         let every = visible ? Config.scanEverySamplesVisible : (mem.health == .healthy ? Config.scanEverySamplesHealthy : Config.scanEverySamplesStrained)
         if tick % every == 0 { scanNow() }
@@ -391,6 +391,12 @@ final class Monitor: ObservableObject {
         return Date().timeIntervalSince1970 - TimeInterval(tv.tv_sec)
     }
 
+    func checkForUpdatesIfDue() {
+        guard updateCheckDays > 0, !Demo.on else { return }
+        let last = UserDefaults.standard.object(forKey: "lastUpdateCheck") as? Date ?? .distantPast
+        if Date().timeIntervalSince(last) > Double(updateCheckDays) * 86_400 - 600 { checkForUpdates(manual: false) }
+    }
+
     func checkForUpdates(manual: Bool) {
         Updates.check { [weak self] latest, url in
             guard let self else { return }
@@ -556,7 +562,7 @@ final class Monitor: ObservableObject {
         guardEnabled = false; alertsEnabled = true
         autoPauseEnabled = Config.autoPauseOnByDefault; autoPauseMinutes = Config.autoPauseDefaultMinutes
         smartPause = false; keepRecentSessions = 1; nightlyClaudeRestart = false
-        weeklyUpdateCheck = false; menuBarStyle = "percent"
+        updateCheckDays = 0; menuBarStyle = "percent"
         settingsChanged()
     }
 

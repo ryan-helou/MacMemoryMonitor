@@ -376,11 +376,22 @@ struct SettingsView: View {
                             }
                             .labelsHidden().fixedSize()
                         }
-                        setting("Check for updates weekly", m.updateStatus ?? "Off = the app never goes online.", isOn: $m.weeklyUpdateCheck) {
-                            Button("Check now") { m.checkForUpdates(manual: true) }
+                        VStack(alignment: .leading, spacing: 4) {
+                            row("Check for updates") {
+                                Picker("", selection: $m.updateCheckDays) {
+                                    Text("Never").tag(0)
+                                    Text("Daily").tag(1)
+                                    Text("Weekly").tag(7)
+                                }
+                                .labelsHidden().fixedSize()
+                                Button("Now") { m.checkForUpdates(manual: true) }
+                            }
+                            Text(m.updateStatus ?? (m.updateCheckDays == 0 ? "Never = the app never goes online on its own." : "Only asks GitHub for the latest version number."))
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                     }
 
+                    section("More") {
                     DisclosureGroup(isExpanded: $showAdvanced) {
                         VStack(alignment: .leading, spacing: 12) {
                             choice("Lag sensitivity", "How quickly the icon turns orange or red.", $lagSensitivity, ["Relaxed", "Normal", "Sensitive"])
@@ -398,7 +409,7 @@ struct SettingsView: View {
                             }
                         }
                         .padding(.top, 8)
-                    } label: { Text("Advanced").font(.subheadline.weight(.semibold)) }
+                    } label: { Text("Advanced").font(.callout) }
 
                     DisclosureGroup(isExpanded: $showTips) {
                         VStack(alignment: .leading, spacing: 4) {
@@ -414,7 +425,8 @@ struct SettingsView: View {
                             }
                         }
                         .padding(.top, 8)
-                    } label: { Text("Tips to show").font(.subheadline.weight(.semibold)) }
+                    } label: { Text("Tips to show").font(.callout) }
+                    }
 
                     if !m.actionLog.isEmpty {
                         VStack(alignment: .leading, spacing: 3) {
@@ -448,10 +460,15 @@ struct SettingsView: View {
         return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
     }
 
+    /// A titled group drawn as a rounded card, like System Settings.
     private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            content()
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).padding(.leading, 4)
+            VStack(alignment: .leading, spacing: 12) { content() }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08)))
         }
     }
 
