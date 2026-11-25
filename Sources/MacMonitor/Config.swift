@@ -57,7 +57,9 @@ enum Config {
     static let unusedAppMinMemory = 200 * MB
     static let restartReminderDays: Double = 3
     static let restartReminderSwap = 3 * GB
-    static let nightlyRestartHours = 3..<5        // when "Restart Claude overnight" may run
+    static let stepAwayMinutes: Double = 15       // no keyboard/mouse this long = you stepped away
+    static let claudeRestartAbove = 1.5 * GB      // only restart Claude once it has grown past this
+    static let claudeRestartCooldown: Double = 6 * 3600
     static let hugeSessionMemory = 600 * MB
     static let hugeTranscript: UInt64 = 150_000_000
     static let mcpServerCost = 26 * MB            // rough memory per local MCP server process

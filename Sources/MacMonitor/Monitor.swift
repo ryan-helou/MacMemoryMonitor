@@ -360,17 +360,26 @@ final class Monitor: ObservableObject {
         for g in idleSessions(olderThan: 600) where g.rootPid != newest { endSession(g) }
     }
 
-    /// Restart the Claude app once a night (3–5 AM) when it has grown big and no session is busy.
+    /// Restart the Claude app while you're away from the Mac, once it has grown big and no session is doing anything.
+    /// Its window only shrinks on a restart; sessions are saved and reappear in the sidebar.
     private func nightlyRestart(_ sessions: [ProcGroup], now: Date) {
-        guard nightlyClaudeRestart, !Demo.on, Config.nightlyRestartHours.contains(Calendar.current.component(.hour, from: now)),
-              now.timeIntervalSince(lastNightlyRestart) > 12 * 3600,
+        guard nightlyClaudeRestart, !Demo.on,
+              userIdleSeconds() >= Config.stepAwayMinutes * 60,
+              now.timeIntervalSince(lastNightlyRestart) > Config.claudeRestartCooldown,
               let app = rows.first(where: { $0.bundleID == "com.anthropic.claudefordesktop" }),
-              Double(app.memory) > 1.5 * Config.GB,
-              sessions.allSatisfy({ $0.runningTask == nil && $0.cpu < Config.sessionBusyCPU && idleTime($0, now: now) > 1800 })
+              Double(app.memory) > Config.claudeRestartAbove,
+              sessions.allSatisfy({ $0.runningTask == nil && $0.cpu < Config.sessionBusyCPU && idleTime($0, now: now) > 600 })
         else { return }
         lastNightlyRestart = now
         relaunch(app)
-        history.add("Restarted Claude overnight (was \(fmtBytes(app.memory)))", kind: "action")
+        let text = "Restarted Claude while you were away (it was using \(fmtBytes(app.memory))). Your sessions are saved in the sidebar."
+        history.add(text, kind: "action")
+        notify(title: "Freed memory while you were away", body: text)
+    }
+
+    /// Seconds since the last keyboard, mouse or trackpad input.
+    private func userIdleSeconds() -> TimeInterval {
+        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
     }
 
     private func uptime() -> TimeInterval {

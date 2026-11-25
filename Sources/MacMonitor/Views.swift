@@ -332,8 +332,8 @@ struct SettingsView: View {
                 Stepper("Always keep my \(m.keepRecentSessions) newest", value: $m.keepRecentSessions, in: 0...5)
                     .font(.caption).controlSize(.small).disabled(!m.autoPauseEnabled)
             }
-            setting("Restart Claude overnight",
-                    "Between 3 and 5 AM, if the Claude app has grown big and no session is busy.",
+            setting("Restart Claude when I step away",
+                    "After 15 min without keyboard or mouse, if Claude has grown past 1.5 GB and no session is busy. Sessions stay in the sidebar.",
                     isOn: $m.nightlyClaudeRestart) { EmptyView() }
             setting("Free memory automatically",
                     m.expendable.isEmpty ? "When memory is critical, quits apps you mark with ⚡ (hover an app row)."
