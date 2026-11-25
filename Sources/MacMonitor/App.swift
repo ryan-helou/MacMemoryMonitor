@@ -87,6 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             popover.performClose(nil)
         } else {
             monitor.visible = true
+            // A fresh panel every time, so it always opens on the main page (not where you left it).
+            let host = NSHostingController(rootView: PopoverView().environmentObject(monitor))
+            host.sizingOptions = .preferredContentSize
+            popover.contentViewController = host
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
