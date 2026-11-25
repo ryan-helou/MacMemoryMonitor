@@ -562,14 +562,18 @@ struct HistoryView: View {
                     Text(pts.first!.t, style: .time); Spacer(); Text("now")
                 }.font(.caption2).foregroundStyle(.secondary)
             }
-            Text("What happened").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            let events = m.history.events.reversed().prefix(40)
+            Text("What happened (last 7 days)").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            let events = Array(m.history.events.reversed())
             if events.isEmpty {
                 Text("Nothing notable yet. Lag, big jumps and actions show up here.").font(.callout).foregroundStyle(.secondary)
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(events)) { e in
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(events.enumerated()), id: \.element.id) { i, e in
+                            if i == 0 || !Calendar.current.isDate(e.t, inSameDayAs: events[i - 1].t) {
+                                Text(dayTitle(e.t)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                    .padding(.top, i == 0 ? 0 : 6)
+                            }
                             HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: icon(e.kind)).foregroundStyle(color(e.kind)).frame(width: 14)
                                 Text(e.t, style: .time).font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 58, alignment: .leading)
@@ -578,9 +582,15 @@ struct HistoryView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 260)
+                .frame(maxHeight: 330)
             }
         }
+    }
+    private func dayTitle(_ d: Date) -> String {
+        let c = Calendar.current
+        if c.isDateInToday(d) { return "Today" }
+        if c.isDateInYesterday(d) { return "Yesterday" }
+        return d.formatted(.dateTime.weekday(.wide).month().day())
     }
     private func icon(_ k: String) -> String { ["lag": "tortoise.fill", "ok": "checkmark.circle", "jump": "arrow.up.right", "action": "hand.tap"][k] ?? "circle" }
     private func color(_ k: String) -> Color { ["lag": .red, "ok": .green, "jump": .orange][k] ?? .secondary }

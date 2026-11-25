@@ -45,7 +45,7 @@ final class History {
         if let d = try? Data(contentsOf: file), let s = try? JSONDecoder().decode(Saved.self, from: d) {
             let cutoff = Date().addingTimeInterval(-86_400)
             points = s.points.filter { $0.t > cutoff }
-            events = s.events.filter { $0.t > cutoff }
+            events = s.events.filter { $0.t > Date().addingTimeInterval(-7 * 86_400) }   // events: 7 days
         }
     }
 
@@ -87,7 +87,8 @@ final class History {
 
     func add(_ text: String, kind: String) {
         events.append(HistoryEvent(t: Date(), text: text, kind: kind))
-        if events.count > 200 { events.removeFirst(events.count - 200) }
+        events.removeAll { $0.t < Date().addingTimeInterval(-7 * 86_400) }
+        if events.count > 1000 { events.removeFirst(events.count - 1000) }
     }
 
     /// Apps whose memory climbed steadily: at least `leakGrowth` over 2+ hours, rising in most 5-minute steps.
