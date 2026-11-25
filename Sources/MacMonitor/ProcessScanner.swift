@@ -40,7 +40,7 @@ struct ScanResult {
     var claudeBinaries = 0      // processes that look like Claude Code, recognised or not
 }
 
-private struct RawProc {
+struct RawProc {
     let pid: pid_t
     let ppid: pid_t
     let uid: uid_t
@@ -71,6 +71,13 @@ final class ProcessScanner {
     private let sessionLookup = ClaudeSessionLookup()
     private let timebase: mach_timebase_info_data_t
     private let myPid = getpid()
+
+    // Where per-process details come from. Real lookups by default; tests swap in fakes.
+    var cwdProvider: (pid_t) -> String = { pidCwd($0) }
+    var argsProvider: (pid_t) -> [String] = { processArgs($0) }
+    lazy var sessionInfoProvider: (pid_t) -> SessionInfo = { [unowned self] pid in
+        self.sessionLookup.info(pid: pid) { processArgs(pid) }
+    }
 
     init() {
         var tb = mach_timebase_info_data_t()
@@ -112,7 +119,12 @@ final class ProcessScanner {
         prevCPU = newCPU
         argsCache = argsCache.filter { procs[$0.key] != nil }
         cwdCache = cwdCache.filter { procs[$0.key] != nil }
+        return group(procs)
+    }
 
+    /// Turns a set of processes into the groups shown in the list. Split out from `scan()` so tests
+    /// can feed in made-up processes.
+    func group(_ procs: [pid_t: RawProc]) -> ScanResult {
         var children: [pid_t: [pid_t]] = [:]
         for p in procs.values { children[p.ppid, default: []].append(p.pid) }
 
@@ -139,7 +151,7 @@ final class ProcessScanner {
         for p in procs.values where isClaudeCode(p) && p.pid != myPid {
             if let parent = procs[p.ppid], isClaudeCode(parent) { continue } // nested → belongs to parent session
             let id = "s\(p.pid)"
-            let cwd = cwdCache[p.pid] ?? pidCwd(p.pid)
+            let cwd = cwdCache[p.pid] ?? cwdProvider(p.pid)
             cwdCache[p.pid] = cwd
             let folder = cwd.isEmpty ? "Session \(p.pid)" : (cwd as NSString).lastPathComponent
             groups[id] = ProcGroup(id: id, kind: .claudeSession, name: folder, rootPid: p.pid, started: p.start, cwd: cwd)
@@ -150,7 +162,7 @@ final class ProcessScanner {
             let late = groups[id]!.pids.compactMap { procs[$0] }
                 .filter { $0.pid != p.pid && $0.start.timeIntervalSince(p.start) > Config.sessionTaskGrace }
             if let task = late.max(by: { $0.start < $1.start }) { groups[id]!.runningTask = task.name }
-            let info = sessionLookup.info(pid: p.pid) { processArgs(p.pid) }
+            let info = sessionInfoProvider(p.pid)
             groups[id]!.sessionTitle = info.title
             groups[id]!.lastActivity = info.lastActivity
             groups[id]!.transcriptBytes = info.transcriptBytes
@@ -238,7 +250,7 @@ final class ProcessScanner {
     }
 
     private func scriptArg(_ pid: pid_t) -> String {
-        let args = processArgs(pid)
+        let args = argsProvider(pid)
         guard args.count > 1 else { return "" }
         for a in args.dropFirst() where !a.hasPrefix("-") {
             let comps = (a as NSString).pathComponents.filter { $0 != "/" }
@@ -307,7 +319,7 @@ private func rusage(_ pid: pid_t) -> rusage_info_v4? {
     return r == 0 ? ru : nil
 }
 
-private func pidCwd(_ pid: pid_t) -> String {
+func pidCwd(_ pid: pid_t) -> String {
     var info = proc_vnodepathinfo()
     let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
     guard proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size) == size else { return "" }

@@ -63,6 +63,10 @@ cd MacMemoryMonitor
 
 Every threshold, timing and app list lives in one file, [`Sources/MacMonitor/Config.swift`](Sources/MacMonitor/Config.swift). Examples: when the menu bar turns orange or red, how long before idle Claude sessions are paused, which apps count as "browser engine" apps. Change a value and run `./build.sh` again. Most day-to-day options (auto-pause, auto-free, warnings, open at login) are also switches at the bottom of the panel. See [CONTRIBUTING.md](CONTRIBUTING.md) for a map of the code.
 
+## Contributing
+
+Bug reports, ideas and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the [good first issues](https://github.com/ryan-helou/MacMemoryMonitor/labels/good%20first%20issue). Found a bug? Settings → **Copy diagnostics** and paste it into a [new issue](https://github.com/ryan-helou/MacMemoryMonitor/issues/new/choose). Questions go in [Discussions](https://github.com/ryan-helou/MacMemoryMonitor/discussions).
+
 ## Privacy
 
 It never connects to the internet and collects nothing. Everything it shows is read from your own Mac and stays there.

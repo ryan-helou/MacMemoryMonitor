@@ -7,6 +7,14 @@ import UserNotifications
 struct MacMonitorMain {
     static func main() {
         if CommandLine.arguments.contains("--dump") { dump(); return }
+        if CommandLine.arguments.contains("--diagnostics") {
+            MainActor.assumeIsolated {
+                let m = Monitor(); m.start()
+                RunLoop.main.run(until: Date().addingTimeInterval(4))
+                print(m.diagnostics())
+            }
+            return
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate

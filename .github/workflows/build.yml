@@ -10,6 +10,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Run tests
+        run: swift test
       - name: Build universal app
         run: ./build.sh --package
       - name: Smoke test

@@ -1,0 +1,31 @@
+name: Bug report
+description: Something isn't working right
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting! The diagnostics below make most bugs quick to fix.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we see it happen?
+      placeholder: "1. Open the panel\n2. Click …\n3. …"
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: In the app, open Settings (gear icon) → **Copy diagnostics**, then paste here. It contains no personal names. (Or run `"/Applications/Mac Memory Monitor.app/Contents/MacOS/MacMonitor" --diagnostics` in Terminal.)
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot (optional)

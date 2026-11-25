@@ -440,13 +440,15 @@ struct SettingsView: View {
             .frame(maxHeight: 470)
             Divider()
             HStack {
+                Button("Copy diagnostics") { m.copyDiagnostics() }
+                    .help("Copies a short report (no personal names) to paste into a bug report on GitHub")
                 ConfirmButton(title: "Reset to defaults") {
                     m.resetSettings(); disabledTips = []
                     stepAwayMinutes = 15; restartAboveGB = 1.5; alertEveryMinutes = 15
                     lagSensitivity = 1; updateSpeed = 1; hideBelowMB = 15; unusedAppHours = 3
                 }
                 Spacer()
-                Button("Quit Mac Memory Monitor") { NSApp.terminate(nil) }
+                Button("Quit") { NSApp.terminate(nil) }.help("Quit Mac Memory Monitor")
             }
             .controlSize(.small)
         }

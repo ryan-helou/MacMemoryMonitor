@@ -1,0 +1,20 @@
+name: Feature idea
+description: Suggest something that would help
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's slowing you down?
+      description: Describe the problem first — what were you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+  - type: dropdown
+    id: help
+    attributes:
+      label: Would you like to build it?
+      options: ["Yes, I'd like to try", "Maybe, with some pointers", "No, just suggesting"]

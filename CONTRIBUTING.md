@@ -4,8 +4,10 @@ Ideas, bug reports and pull requests are welcome.
 
 ## Build and run
 ```bash
+swift test                         # run the tests
 ./build.sh                         # build, install to ~/Applications, launch
 .build/release/MacMonitor --dump   # print one reading in the terminal
+.build/release/MacMonitor --demo --open   # fake data, safe for screenshots
 ./build.sh --package               # universal zip in dist/ (what releases ship)
 ```
 Needs macOS 14+ and Apple's command line tools (`xcode-select --install`).
@@ -25,3 +27,9 @@ Bump `CFBundleShortVersionString` in `Resources/Info.plist`, commit, then push a
 ## Ground rules
 - The app must stay light: no network calls, no dependencies, under ~60 MB of memory.
 - Anything that quits or stops something needs a confirm click, or an explicit opt-in for automatic actions.
+
+## Good places to start
+Look for issues labelled [good first issue](https://github.com/ryan-helou/MacMemoryMonitor/labels/good%20first%20issue). Questions are welcome in [Discussions](https://github.com/ryan-helou/MacMemoryMonitor/discussions).
+
+## Testing your change
+Grouping logic lives in `ProcessScanner.group(_:)`, which takes made-up processes — add a case to `Tests/MacMonitorTests/GroupingTests.swift` for anything you change there.

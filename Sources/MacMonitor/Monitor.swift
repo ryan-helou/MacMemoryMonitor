@@ -557,6 +557,40 @@ final class Monitor: ObservableObject {
         apply(lastScanRaw)
     }
 
+    /// A plain-text report for bug reports. Leaves out anything personal: no session titles, folders or script names.
+    func diagnostics() -> String {
+        let p = ProcessInfo.processInfo
+        var model = [CChar](repeating: 0, count: 64); var n = 64
+        sysctlbyname("hw.model", &model, &n, nil, 0)
+        let s = mem
+        var lines = [
+            "Mac Memory Monitor \(Updates.current)",
+            "macOS \(p.operatingSystemVersionString) · \(String(cString: model)) · \(fmtBytes(s.total)) RAM · \(p.processorCount) cores",
+            "Health: \(s.health) · pressure \(s.pressurePercent)% (level \(s.pressureLevel))",
+            "Apps \(fmtBytes(s.app)) · wired \(fmtBytes(s.wired)) · compressed \(fmtBytes(s.compressed)) · swap \(fmtBytes(s.swapUsed)) · swap reads \(fmtRate(s.swapInRate)) · CPU \(Int(s.cpuUsage))% · disk free \(fmtBytes(s.diskFree))",
+            "",
+            "Top items:",
+        ]
+        for g in rows.prefix(12) {
+            let name: String
+            switch g.kind {
+            case .app, .system: name = g.name
+            case .claudeAll: name = "Claude Code (\(g.children.count) sessions, \(g.children.filter(\.fromDesktop).count) from the app, \(g.children.filter { $0.runningTask != nil }.count) busy)"
+            case .script: name = g.id.hasPrefix("vm") ? "virtual machine" : "background process"
+            case .claudeSession: name = "Claude session"
+            }
+            lines.append("  \(fmtBytes(g.memory).padding(toLength: 9, withPad: " ", startingAt: 0)) \(g.processCount)× \(name)")
+        }
+        lines += ["", "Settings: auto-pause \(autoPauseEnabled ? (smartPause ? "smart" : "\(autoPauseMinutes)m") : "off"), keep \(keepRecentSessions), step-away restart \(nightlyClaudeRestart), auto-free \(guardEnabled) (\(expendable.count) ⚡), lag \(Prefs.lagSensitivity), speed \(Prefs.updateSpeed), updates every \(updateCheckDays)d"]
+        return lines.joined(separator: "\n")
+    }
+
+    func copyDiagnostics() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(diagnostics(), forType: .string)
+        updateStatus = "Diagnostics copied — paste them into your GitHub issue."
+    }
+
     func resetSettings() {
         Prefs.allKeys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
         guardEnabled = false; alertsEnabled = true

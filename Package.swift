@@ -9,6 +9,11 @@ let package = Package(
             name: "MacMonitor",
             path: "Sources/MacMonitor",
             swiftSettings: [.unsafeFlags(["-Osize"])]
-        )
+        ),
+        .testTarget(
+            name: "MacMonitorTests",
+            dependencies: ["MacMonitor"],
+            path: "Tests/MacMonitorTests"
+        ),
     ]
 )
