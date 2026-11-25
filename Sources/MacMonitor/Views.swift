@@ -327,12 +327,12 @@ struct SettingsView: View {
                                     Text("After").tag(false)
                                     Text("Only when memory is tight").tag(true)
                                 }
-                                .labelsHidden().fixedSize()
+                                .labelsHidden().frame(width: m.smartPause ? 210 : 80)
                                 if !m.smartPause {
                                     Picker("", selection: $m.autoPauseMinutes) {
                                         ForEach(Config.autoPauseChoices, id: \.self) { Text("\($0) min unused").tag($0) }
                                     }
-                                    .labelsHidden().fixedSize()
+                                    .labelsHidden().frame(width: 100)
                                 }
                             }
                             Stepper("Always keep my \(m.keepRecentSessions) newest", value: $m.keepRecentSessions, in: 0...5)
@@ -342,10 +342,10 @@ struct SettingsView: View {
                             HStack(spacing: 6) {
                                 Text("After")
                                 Picker("", selection: $stepAwayMinutes) { ForEach([10.0, 15, 30, 60], id: \.self) { Text("\(Int($0)) min").tag($0) } }
-                                    .labelsHidden().fixedSize()
+                                    .labelsHidden().frame(width: 100)
                                 Text("away, once it's over")
                                 Picker("", selection: $restartAboveGB) { ForEach([1.0, 1.5, 2, 3], id: \.self) { Text(String(format: "%g GB", $0)).tag($0) } }
-                                    .labelsHidden().fixedSize()
+                                    .labelsHidden().frame(width: 100)
                             }
                         }
                         setting("Free memory automatically", "When memory is critical, quits your ⚡ apps, biggest first.",
@@ -360,7 +360,7 @@ struct SettingsView: View {
                             HStack(spacing: 6) {
                                 Text("At most every")
                                 Picker("", selection: $alertEveryMinutes) { ForEach([15.0, 30, 60, 120], id: \.self) { Text("\(Int($0)) min").tag($0) } }
-                                    .labelsHidden().fixedSize()
+                                    .labelsHidden().frame(width: 100)
                             }
                         }
                     }
@@ -374,7 +374,7 @@ struct SettingsView: View {
                                 Text("Lag (disk reads)").tag("lag")
                                 Text("Dot only").tag("dot")
                             }
-                            .labelsHidden().fixedSize()
+                            .labelsHidden().frame(width: 150)
                         }
                         VStack(alignment: .leading, spacing: 4) {
                             row("Check for updates") {
@@ -383,7 +383,7 @@ struct SettingsView: View {
                                     Text("Daily").tag(1)
                                     Text("Weekly").tag(7)
                                 }
-                                .labelsHidden().fixedSize()
+                                .labelsHidden().frame(width: 100)
                                 Button("Now") { m.checkForUpdates(manual: true) }
                             }
                             Text(m.updateStatus ?? (m.updateCheckDays == 0 ? "Never = the app never goes online on its own." : "Only asks GitHub for the latest version number."))
@@ -398,14 +398,14 @@ struct SettingsView: View {
                             choice("Update speed", "How often apps are re-measured while the panel is closed.", $updateSpeed, ["Battery saver", "Normal", "Fast"])
                             row("Hide items smaller than") {
                                 Picker("", selection: $hideBelowMB) { ForEach([15.0, 50, 100, 250], id: \.self) { Text("\(Int($0)) MB").tag($0) } }
-                                    .labelsHidden().fixedSize()
+                                    .labelsHidden().frame(width: 100)
                             }
                             row("Suggest quitting apps unused for") {
                                 Picker("", selection: $unusedAppHours) {
                                     Text("Never").tag(0.0)
                                     ForEach([1.0, 3, 6], id: \.self) { Text("\(Int($0)) h").tag($0) }
                                 }
-                                .labelsHidden().fixedSize()
+                                .labelsHidden().frame(width: 100)
                             }
                         }
                         .padding(.top, 8)

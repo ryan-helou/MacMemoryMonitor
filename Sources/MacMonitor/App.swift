@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var sub: AnyCancellable?
     private var styleSub: AnyCancellable?
     private var hotkey: Hotkey?
+    private var outsideClick: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -78,6 +79,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         ]))
         if text.isEmpty { title.deleteCharacters(in: NSRange(location: 1, length: 1)) }
         statusItem.button?.attributedTitle = title
+        // Fixed width per style (sized for the widest possible value), so the item — and the panel hanging from it —
+        // doesn't jiggle as numbers change.
+        let widest: String = switch monitor.menuBarStyle {
+        case "free": "● 88.8 GB free"
+        case "lag": "● 888 MB/s"
+        case "dot": "●"
+        default: "● 100%"
+        }
+        let w = NSAttributedString(string: widest, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)]).size().width
+        statusItem.length = ceil(w) + 12
         statusItem.button?.toolTip = "Memory \(fmtBytes(s.used)) / \(fmtBytes(s.total)) · Swap \(fmtBytes(s.swapUsed))"
     }
 
@@ -92,7 +103,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             host.sizingOptions = .preferredContentSize
             popover.contentViewController = host
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            NSApp.activate(ignoringOtherApps: true)
             popover.contentViewController?.view.window?.makeKey()
+            // Any click in another app or on the desktop closes the panel, whatever screen it's on.
+            outsideClick = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+                Task { @MainActor in self?.popover.performClose(nil) }
+            }
         }
     }
 
@@ -118,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     func popoverDidClose(_ notification: Notification) {
         monitor.visible = false
+        if let m = outsideClick { NSEvent.removeMonitor(m); outsideClick = nil }
     }
 }
 
