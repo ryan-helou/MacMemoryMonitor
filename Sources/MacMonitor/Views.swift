@@ -330,7 +330,7 @@ struct SettingsView: View {
                                 .labelsHidden().frame(width: m.smartPause ? 210 : 80)
                                 if !m.smartPause {
                                     Picker("", selection: $m.autoPauseMinutes) {
-                                        ForEach(Config.autoPauseChoices, id: \.self) { Text("\($0) min unused").tag($0) }
+                                        ForEach(Config.autoPauseChoices, id: \.self) { Text("\($0) min").tag($0) }
                                     }
                                     .labelsHidden().frame(width: 100)
                                 }
