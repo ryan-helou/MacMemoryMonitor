@@ -21,6 +21,8 @@ final class Monitor: ObservableObject {
     @Published private(set) var actionLog: [String] = []
     @Published private(set) var updateAvailable: (String, URL)?
     @Published var updateStatus: String?
+    /// Also pause Claude Code sessions running in a terminal (they print how to resume in their tab).
+    @Published var pauseTerminalSessions: Bool { didSet { UserDefaults.standard.set(pauseTerminalSessions, forKey: "pauseTerminalSessions") } }
     @Published var smartPause: Bool { didSet { UserDefaults.standard.set(smartPause, forKey: "smartPause") } }
     @Published var keepRecentSessions: Int { didSet { UserDefaults.standard.set(keepRecentSessions, forKey: "keepRecentSessions") } }
     @Published var nightlyClaudeRestart: Bool { didSet { UserDefaults.standard.set(nightlyClaudeRestart, forKey: "nightlyClaudeRestart") } }
@@ -64,6 +66,7 @@ final class Monitor: ObservableObject {
         autoPauseEnabled = d.object(forKey: "autoPauseEnabled") as? Bool ?? Config.autoPauseOnByDefault
         autoPauseMinutes = d.object(forKey: "autoPauseMinutes") as? Int ?? Config.autoPauseDefaultMinutes
         smartPause = d.bool(forKey: "smartPause")
+        pauseTerminalSessions = d.bool(forKey: "pauseTerminalSessions")
         keepRecentSessions = d.object(forKey: "keepRecentSessions") as? Int ?? 1
         nightlyClaudeRestart = d.bool(forKey: "nightlyClaudeRestart")
         updateCheckDays = d.object(forKey: "updateCheckDays") as? Int ?? (d.bool(forKey: "weeklyUpdateCheck") ? 7 : 0)
@@ -141,6 +144,7 @@ final class Monitor: ObservableObject {
                 else { state = "last used \(fmtDuration(idle)) ago" }
                 if pausing.contains(g.rootPid) { state = "pausing…" }
                 g.detail = g.sessionTitle != nil ? "\(folder) · \(state)" : state
+                if !g.fromDesktop { g.detail = "terminal · " + g.detail }
                 sessions.append(g)
             case .system:
                 g.detail = "Can't be quit — shown for context"
@@ -332,7 +336,7 @@ final class Monitor: ObservableObject {
         }
         let recent = Set(candidates.sorted { idleTime($0, now: now) < idleTime($1, now: now) }.prefix(keep).map(\.rootPid))
         var idle = candidates.filter {
-            $0.fromDesktop && $0.runningTask == nil && $0.cpu < Config.sessionBusyCPU && !pausing.contains($0.rootPid)
+            canAutoPause($0) && $0.runningTask == nil && $0.cpu < Config.sessionBusyCPU && !pausing.contains($0.rootPid)
                 && !recent.contains($0.rootPid) && idleTime($0, now: now) >= limit
         }
         .sorted { idleTime($0, now: now) > idleTime($1, now: now) }
@@ -342,16 +346,23 @@ final class Monitor: ObservableObject {
             pausing.insert(g.rootPid)
             terminate(pids: g.pids, label: "Claude session “\(g.name)” (unused \(fmtDuration(idleTime(g, now: now))))",
                       rootFirst: g.rootPid, verb: "Auto-paused")
+            if !g.fromDesktop, let tty = g.tty { tellTerminal(tty, rootPid: g.rootPid) }
         }
         let freed = idle.reduce(0) { $0 + $1.memory }
         notify(title: "Paused \(idle.count) unused Claude session\(idle.count == 1 ? "" : "s") · freed \(fmtBytes(freed))",
                body: "\(idle.map(\.name).joined(separator: ", ")). Conversations are saved; reopen them from the Claude sidebar.")
     }
 
+    /// Desktop sessions can always be reopened from the sidebar. Terminal ones only if you opted in, and only when
+    /// we know their terminal, so we can tell you there how to resume.
+    private func canAutoPause(_ g: ProcGroup) -> Bool {
+        g.fromDesktop || ((pauseTerminalSessions || CommandLine.arguments.contains { $0.hasPrefix("--test-autopause=") }) && g.tty != nil)
+    }
+
     private func idleSessions(olderThan secs: TimeInterval) -> [ProcGroup] {
         let now = Date()
         return (rows.first { $0.kind == .claudeAll }?.children ?? []).filter {
-            $0.fromDesktop && $0.runningTask == nil && idleTime($0, now: now) >= secs
+            canAutoPause($0) && $0.runningTask == nil && idleTime($0, now: now) >= secs
         }
     }
 
@@ -529,6 +540,18 @@ final class Monitor: ObservableObject {
 
     func endSession(_ g: ProcGroup) {
         terminate(pids: g.pids, label: "Claude session “\(g.name)”", rootFirst: g.rootPid, verb: "Paused")
+        if !g.fromDesktop, let tty = g.tty { tellTerminal(tty, rootPid: g.rootPid) }
+    }
+
+    /// Once a terminal session has stopped, print in its tab why, and how to pick it back up.
+    private func tellTerminal(_ tty: String, rootPid: pid_t) {
+        Task { @MainActor in
+            for _ in 0..<20 where kill(rootPid, 0) == 0 { try? await Task.sleep(nanoseconds: 250_000_000) }
+            let msg = "\r\n\u{23F8}  Paused by Mac Memory Monitor to free memory. Your conversation is saved.\r\n   Resume it with:  claude --continue   (or  claude --resume  to pick one)\r\n"
+            if let h = FileHandle(forWritingAtPath: "/dev/\(tty)") {
+                h.write(Data(msg.utf8)); try? h.close()
+            }
+        }
     }
 
     func killScript(_ g: ProcGroup) {
@@ -596,7 +619,7 @@ final class Monitor: ObservableObject {
         guardEnabled = false; alertsEnabled = true
         autoPauseEnabled = Config.autoPauseOnByDefault; autoPauseMinutes = Config.autoPauseDefaultMinutes
         smartPause = false; keepRecentSessions = 1; nightlyClaudeRestart = false
-        updateCheckDays = 0; menuBarStyle = "percent"
+        updateCheckDays = 0; menuBarStyle = "percent"; pauseTerminalSessions = false
         settingsChanged()
     }
 

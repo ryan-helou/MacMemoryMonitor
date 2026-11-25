@@ -13,12 +13,15 @@ final class ClaudeSessionLookup {
     private var titleCache: [String: (Date, String?)] = [:] // path → (mtime when read, title)
     private let projects = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
 
-    func info(pid: pid_t, args: () -> [String]) -> SessionInfo {
-        let path: String
+    func info(pid: pid_t, cwd: String = "", args: () -> [String]) -> SessionInfo {
+        var path: String
         if let p = pathCache[pid] { path = p } else {
             path = findTranscript(args()) ?? ""
             pathCache[pid] = path
         }
+        // Sessions started in a terminal usually have no id in their arguments: use the newest conversation
+        // in their folder. (If two sessions share a folder this can only make one look *more* recently used.)
+        if path.isEmpty, !cwd.isEmpty { path = newestTranscript(in: cwd) ?? "" }
         guard !path.isEmpty, let attrs = try? FileManager.default.attributesOfItem(atPath: path) else { return SessionInfo() }
         let mtime = attrs[.modificationDate] as? Date
         var info = SessionInfo(lastActivity: mtime, transcriptBytes: (attrs[.size] as? NSNumber)?.uint64Value ?? 0)
@@ -31,6 +34,17 @@ final class ClaudeSessionLookup {
     }
 
     func forget(except live: Set<pid_t>) { pathCache = pathCache.filter { live.contains($0.key) } }
+
+    /// Claude Code stores a folder's conversations in ~/.claude/projects/<path with every non-letter/digit as "-">.
+    private func newestTranscript(in cwd: String) -> String? {
+        let slug = String(cwd.map { $0.isLetter || $0.isNumber ? $0 : "-" })
+        let dir = projects.appendingPathComponent(slug)
+        guard let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return nil }
+        return files.filter { $0.pathExtension == "jsonl" }
+            .max { (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? .distantPast) ?? .distantPast
+                 < (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? .distantPast) ?? .distantPast }?
+            .path
+    }
 
     private func findTranscript(_ args: [String]) -> String? {
         var id: String?

@@ -336,6 +336,8 @@ struct SettingsView: View {
                                 }
                             }
                             Stepper("Always keep my \(m.keepRecentSessions) newest", value: $m.keepRecentSessions, in: 0...5)
+                            Toggle("Include sessions in a terminal (it tells you how to resume in that tab)", isOn: $m.pauseTerminalSessions)
+                                .toggleStyle(.checkbox)
                         }
                         setting("Restart Claude when I step away", "Its window only shrinks on a restart. Sessions stay in the sidebar.",
                                 isOn: $m.nightlyClaudeRestart) {

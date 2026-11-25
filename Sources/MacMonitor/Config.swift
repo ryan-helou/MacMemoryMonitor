@@ -115,5 +115,5 @@ enum Prefs {
     static let allKeys = ["lagSensitivity", "updateSpeed", "hideBelowMB", "stepAwayMinutes", "claudeRestartAboveGB",
                           "unusedAppHours", "alertEveryMinutes", "disabledTips", "autoPauseEnabled", "autoPauseMinutes",
                           "smartPause", "keepRecentSessions", "nightlyClaudeRestart", "guardEnabled", "alertsEnabled",
-                          "weeklyUpdateCheck", "updateCheckDays", "menuBarStyle"]
+                          "weeklyUpdateCheck", "updateCheckDays", "menuBarStyle", "pauseTerminalSessions"]
 }

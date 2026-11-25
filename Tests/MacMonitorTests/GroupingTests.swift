@@ -71,6 +71,37 @@ final class GroupingTests: XCTestCase {
         XCTAssertEqual(groups.first { $0.kind == .claudeSession }?.fromDesktop, false)
     }
 
+    func testNativeInstallerSessionInATerminalIsRecognised() {
+        // The terminal install runs as ~/.local/share/claude/versions/<version>, so its name is a version number.
+        var claude = proc(62, parent: 61, "/Users/test/.local/share/claude/versions/2.1.292", mb: 240)
+        claude.tty = 0x1000003
+        let groups = group([
+            proc(60, parent: 1, "/Applications/Ghostty.app/Contents/MacOS/ghostty"),
+            proc(61, parent: 60, "/bin/zsh"),
+            claude,
+            proc(63, parent: 62, "/opt/homebrew/bin/uvx", mb: 30, startedAfter: 1),
+        ])
+        let session = groups.first { $0.kind == .claudeSession }
+        XCTAssertNotNil(session, "native-installer Claude Code must count as a session")
+        XCTAssertEqual(session?.memory, 270 * mb, "its MCP helpers (uvx) belong to it")
+        XCTAssertEqual(session?.fromDesktop, false)
+        XCTAssertNotNil(session?.tty, "terminal sessions remember their terminal, to print how to resume")
+    }
+
+    func testNpmInstalledClaudeCodeIsRecognised() {
+        let s = scanner()
+        s.argsProvider = { pid in pid == 72 ? ["node", "/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js"] : ["node", "server.js"] }
+        let procs = [
+            proc(71, parent: 1, "/bin/zsh"),
+            proc(72, parent: 71, "/opt/homebrew/bin/node", mb: 200),
+            proc(73, parent: 72, "/opt/homebrew/bin/node", mb: 25, startedAfter: 1),
+        ]
+        let groups = s.group(Dictionary(uniqueKeysWithValues: procs.map { ($0.pid, $0) })).groups
+        let session = groups.first { $0.kind == .claudeSession }
+        XCTAssertEqual(session?.processCount, 2)
+        XCTAssertEqual(session?.memory, 225 * mb)
+    }
+
     func testScriptStartedFromATerminalStandsAlone() {
         let groups = group([
             proc(30, parent: 1, "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"),

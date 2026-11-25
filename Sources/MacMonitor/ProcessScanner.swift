@@ -27,7 +27,8 @@ struct ProcGroup: Identifiable {
     var runningTask: String?
     var sessionTitle: String?      // the title shown in the Claude sidebar
     var lastActivity: Date?        // last message in or out
-    var transcriptBytes: UInt64 = 0       // a command/background job the session started after launch → never auto-pause
+    var transcriptBytes: UInt64 = 0
+    var tty: String?               // terminal device (e.g. "ttys003") for sessions run in a terminal       // a command/background job the session started after launch → never auto-pause
     var processCount: Int { pids.count }
 }
 
@@ -49,11 +50,11 @@ struct RawProc {
     let footprint: UInt64
     let cpu: Double
     let start: Date
+    var tty: UInt32 = UInt32.max   // controlling terminal device, if any
 }
 
-/// Path marker for Claude Code session binaries. Overridable only so tests can use a fake session
-/// (the Claude app kills stray processes at the real path).
-private let sessionMarker = ProcessInfo.processInfo.environment["MACMON_SESSION_MARKER"] ?? "/claude-code/"
+/// Test-only override for recognising a Claude Code session (the Claude app kills stray processes at the real paths).
+private let markerOverride = ProcessInfo.processInfo.environment["MACMON_SESSION_MARKER"]
 private let shellNames = Config.shellNames
 private let terminalApps = Config.terminalApps
 private let interpreters = Config.interpreters
@@ -76,7 +77,7 @@ final class ProcessScanner {
     var cwdProvider: (pid_t) -> String = { pidCwd($0) }
     var argsProvider: (pid_t) -> [String] = { processArgs($0) }
     lazy var sessionInfoProvider: (pid_t) -> SessionInfo = { [unowned self] pid in
-        self.sessionLookup.info(pid: pid) { processArgs(pid) }
+        self.sessionLookup.info(pid: pid, cwd: self.cwdCache[pid] ?? "") { processArgs(pid) }
     }
 
     init() {
@@ -114,7 +115,7 @@ final class ProcessScanner {
             let name = path.isEmpty ? cString(bsd.pbi_name) : (path as NSString).lastPathComponent
             procs[pid] = RawProc(pid: pid, ppid: pid_t(bsd.pbi_ppid), uid: bsd.pbi_uid, name: name, path: path,
                                  footprint: footprint, cpu: cpu,
-                                 start: Date(timeIntervalSince1970: TimeInterval(bsd.pbi_start_tvsec)))
+                                 start: Date(timeIntervalSince1970: TimeInterval(bsd.pbi_start_tvsec)), tty: bsd.e_tdev)
         }
         prevCPU = newCPU
         argsCache = argsCache.filter { procs[$0.key] != nil }
@@ -147,7 +148,7 @@ final class ProcessScanner {
         }
 
         // 1. Claude Code sessions (+ every MCP server / tool they spawned).
-        let isClaudeCode: (RawProc) -> Bool = { $0.path.contains(sessionMarker) && $0.name == "claude" }
+        let isClaudeCode: (RawProc) -> Bool = { [unowned self] in self.looksLikeClaudeCode($0) }
         for p in procs.values where isClaudeCode(p) && p.pid != myPid {
             if let parent = procs[p.ppid], isClaudeCode(parent) { continue } // nested → belongs to parent session
             let id = "s\(p.pid)"
@@ -158,6 +159,9 @@ final class ProcessScanner {
             addSubtree(p.pid, to: id)
             // Desktop sessions run as Claude.app → disclaimer → claude; terminal ones have a shell as parent.
             groups[id]!.fromDesktop = (procs[p.ppid]?.path.contains("/Claude.app/") ?? false)
+            if p.tty != UInt32.max, p.tty != 0, let dev = devname(dev_t(bitPattern: p.tty), S_IFCHR) {
+                groups[id]!.tty = String(cString: dev)
+            }
             // MCP servers start with the session; anything started later is real work (a command, a Monitor, a build).
             let late = groups[id]!.pids.compactMap { procs[$0] }
                 .filter { $0.pid != p.pid && $0.start.timeIntervalSince(p.start) > Config.sessionTaskGrace }
@@ -213,6 +217,7 @@ final class ProcessScanner {
         }
 
         sessionLookup.forget(except: Set(procs.keys))
+        nodeIsClaude = nodeIsClaude.filter { procs[$0.key] != nil }
         var result = ScanResult()
         result.groups = groups.values.filter { $0.memory > 0 || $0.kind == .claudeSession }
         result.hogs = procs.values
@@ -220,7 +225,7 @@ final class ProcessScanner {
             .sorted { $0.cpu > $1.cpu }
             .prefix(3)
             .map { Hog(pid: $0.pid, name: describe($0), cpu: $0.cpu) }
-        result.claudeBinaries = procs.values.filter { $0.path.contains(sessionMarker) && $0.name == "claude" }.count
+        result.claudeBinaries = procs.values.filter { looksLikeClaudeCode($0) }.count
         result.spotlightCPU = procs.values
             .filter { $0.name.hasPrefix("mds") || $0.name.hasPrefix("mdworker") || $0.name == "corespotlightd" }
             .reduce(0) { $0 + $1.cpu }
@@ -228,6 +233,23 @@ final class ProcessScanner {
     }
 
     // MARK: helpers
+
+    private var nodeIsClaude: [pid_t: Bool] = [:]
+
+    /// Every way Claude Code runs: bundled with the desktop app (…/claude-code/…/claude), the native installer
+    /// (~/.local/share/claude/versions/<version>), Homebrew, or npm (node …/@anthropic-ai/claude-code/cli.js).
+    func looksLikeClaudeCode(_ p: RawProc) -> Bool {
+        if let m = markerOverride { return p.path.contains(m) && p.name == "claude" }
+        if p.name == "claude" && p.path.contains("claude") { return true }
+        if p.path.contains("/.local/share/claude/versions/") { return true }
+        if p.name == "node" {
+            if let known = nodeIsClaude[p.pid] { return known }
+            let yes = argsProvider(p.pid).dropFirst().contains { $0.contains("claude-code/cli") }
+            nodeIsClaude[p.pid] = yes
+            return yes
+        }
+        return false
+    }
 
     private func isSystem(_ p: RawProc) -> Bool {
         if p.uid < 500 { return true }

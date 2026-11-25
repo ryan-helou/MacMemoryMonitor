@@ -72,7 +72,7 @@ cd MacMemoryMonitor
 
 **Made for Claude Code users**
 - Every session grouped with its helper processes, shown by title and when you last used it
-- Pauses sessions you haven't used in a while — the conversation stays saved, and it never pauses one that's still working
+- Pauses sessions you haven't used in a while — from the Claude app or a terminal (it tells you how to resume). The conversation stays saved, and it never pauses one that's still working
 - Restarts the Claude app while you're away (its window grows to 2+ GB over a few days)
 
 Press **⌥⌘M** anywhere to open the panel.

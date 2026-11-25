@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.0
+- **Terminal sessions:** Claude Code is now recognised however it's installed (desktop app, terminal installer, Homebrew, npm), with its node/uvx MCP helpers grouped under it.
+- Optional auto-pause for terminal sessions (Settings → Pause unused Claude sessions → *Include sessions in a terminal*). The tab then shows how to resume: `claude --continue`.
+- Terminal sessions get their last-used time from their folder's conversation history.
+
 ## 1.4.0
 - **Copy diagnostics** button (Settings) and `--diagnostics` option for bug reports — no personal names included.
 - Automated tests for how processes are grouped, run on every change.
