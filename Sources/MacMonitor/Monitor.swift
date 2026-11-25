@@ -47,6 +47,7 @@ final class Monitor: ObservableObject {
     private var tick = 0
     private var scanning = false
     private var lastScan = ScanResult()
+    private var lastScanRaw = ScanResult()
     private var criticalSince: Date?
     private var lastGuardAction = Date.distantPast
     private var lastAlert = Date.distantPast
@@ -119,6 +120,7 @@ final class Monitor: ObservableObject {
     // MARK: - Turning raw groups into rows + advice
 
     private func apply(_ raw: ScanResult) {
+        lastScanRaw = raw
         let r = Demo.on ? Demo.scan() : raw
         lastScan = r
         let now = Date()
@@ -257,7 +259,7 @@ final class Monitor: ObservableObject {
                              try? p.run()
                          }))
         }
-        let unused = apps.filter {
+        let unused = Config.unusedAppHours <= 0 ? [] : apps.filter {
             guard let id = $0.bundleID, Double($0.memory) >= Config.unusedAppMinMemory, canQuit($0) else { return false }
             return now.timeIntervalSince(lastFront[id] ?? launched) >= Config.unusedAppHours * 3600
         }
@@ -296,7 +298,8 @@ final class Monitor: ObservableObject {
             t.append(Tip(id: "update", icon: "arrow.down.circle", text: "Mac Memory Monitor \(u.0) is available.",
                          actionTitle: "Download", action: { NSWorkspace.shared.open(u.1) }))
         }
-        return t
+        let off = Prefs.disabledTips
+        return t.filter { tip in !off.contains(where: { tip.id.hasPrefix($0) }) }
     }
 
     /// Real "last used": the newest of the conversation's last message, a running task, or CPU activity.
@@ -540,6 +543,21 @@ final class Monitor: ObservableObject {
         }
         log("\(verb) \(label)")
         rescanSoon()
+    }
+
+    /// Re-read settings that other parts of the app cache, and refresh the panel.
+    func settingsChanged() {
+        objectWillChange.send()
+        apply(lastScanRaw)
+    }
+
+    func resetSettings() {
+        Prefs.allKeys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        guardEnabled = false; alertsEnabled = true
+        autoPauseEnabled = Config.autoPauseOnByDefault; autoPauseMinutes = Config.autoPauseDefaultMinutes
+        smartPause = false; keepRecentSessions = 1; nightlyClaudeRestart = false
+        weeklyUpdateCheck = false; menuBarStyle = "percent"
+        settingsChanged()
     }
 
     func toggleExpendable(_ g: ProcGroup) {

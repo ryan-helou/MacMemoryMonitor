@@ -303,89 +303,207 @@ struct SettingsView: View {
     @EnvironmentObject var m: Monitor
     let close: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Button(action: close) { Label("Back", systemImage: "chevron.left") }.buttonStyle(.borderless)
-                Spacer()
-                Text("Settings").font(.headline)
-                Spacer()
-                Color.clear.frame(width: 50, height: 1)
-            }
-            setting("Pause unused Claude sessions",
-                    "Conversations stay saved. Sessions running something are never paused.",
-                    isOn: $m.autoPauseEnabled) {
-                HStack(spacing: 6) {
-                    Picker("", selection: $m.smartPause) {
-                        Text("after").tag(false)
-                        Text("only when memory is tight").tag(true)
-                    }
-                    .labelsHidden().frame(width: m.smartPause ? 190 : 70)
-                    if !m.smartPause {
-                        Picker("", selection: $m.autoPauseMinutes) {
-                            ForEach(Config.autoPauseChoices, id: \.self) { Text("\($0) min").tag($0) }
-                        }
-                        .labelsHidden().frame(width: 80)
-                    }
-                }
-                .controlSize(.small).disabled(!m.autoPauseEnabled)
-                Stepper("Always keep my \(m.keepRecentSessions) newest", value: $m.keepRecentSessions, in: 0...5)
-                    .font(.caption).controlSize(.small).disabled(!m.autoPauseEnabled)
-            }
-            setting("Restart Claude when I step away",
-                    "After 15 min without keyboard or mouse, if Claude has grown past 1.5 GB and no session is busy. Sessions stay in the sidebar.",
-                    isOn: $m.nightlyClaudeRestart) { EmptyView() }
-            setting("Free memory automatically",
-                    m.expendable.isEmpty ? "When memory is critical, quits apps you mark with ⚡ (hover an app row)."
-                                         : "When memory is critical, quits your ⚡ apps, biggest first.",
-                    isOn: $m.guardEnabled) { EmptyView() }
-            setting("Warn me when memory runs out", nil, isOn: $m.alertsEnabled) { EmptyView() }
-            setting("Open at login", nil, isOn: Binding(get: { m.launchAtLogin }, set: { m.launchAtLogin = $0 })) { EmptyView() }
-            HStack {
-                Text("Menu bar shows").font(.callout)
-                Spacer()
-                Picker("", selection: $m.menuBarStyle) {
-                    Text("Pressure %").tag("percent")
-                    Text("Memory free").tag("free")
-                    Text("Lag (disk reads)").tag("lag")
-                    Text("Dot only").tag("dot")
-                }
-                .labelsHidden().controlSize(.small).frame(width: 150)
-            }
-            setting("Check for updates weekly", m.updateStatus ?? "Asks GitHub once a week. Off = the app never goes online.",
-                    isOn: $m.weeklyUpdateCheck) {
-                Button("Check now") { m.checkForUpdates(manual: true) }.controlSize(.small)
-            }
-            Text("Tip: press ⌥⌘M anywhere to open this panel.").font(.caption).foregroundStyle(.secondary)
+    @AppStorage("stepAwayMinutes") private var stepAwayMinutes = 15.0
+    @AppStorage("claudeRestartAboveGB") private var restartAboveGB = 1.5
+    @AppStorage("alertEveryMinutes") private var alertEveryMinutes = 15.0
+    @AppStorage("lagSensitivity") private var lagSensitivity = 1
+    @AppStorage("updateSpeed") private var updateSpeed = 1
+    @AppStorage("hideBelowMB") private var hideBelowMB = 15.0
+    @AppStorage("unusedAppHours") private var unusedAppHours = 3.0
+    @State private var showAdvanced = false
+    @State private var showTips = false
+    @State private var disabledTips = Prefs.disabledTips
 
-            if !m.actionLog.isEmpty {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Recent actions").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    ForEach(m.actionLog, id: \.self) { Text($0).font(.caption.monospaced()).foregroundStyle(.secondary) }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScreenHeader(title: "Settings", close: close)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    section("Automatic help") {
+                        setting("Pause unused Claude sessions", "Conversations stay saved. Sessions running something are never paused.",
+                                isOn: $m.autoPauseEnabled) {
+                            HStack(spacing: 6) {
+                                Picker("", selection: $m.smartPause) {
+                                    Text("After").tag(false)
+                                    Text("Only when memory is tight").tag(true)
+                                }
+                                .labelsHidden().fixedSize()
+                                if !m.smartPause {
+                                    Picker("", selection: $m.autoPauseMinutes) {
+                                        ForEach(Config.autoPauseChoices, id: \.self) { Text("\($0) min unused").tag($0) }
+                                    }
+                                    .labelsHidden().fixedSize()
+                                }
+                            }
+                            Stepper("Always keep my \(m.keepRecentSessions) newest", value: $m.keepRecentSessions, in: 0...5)
+                        }
+                        setting("Restart Claude when I step away", "Its window only shrinks on a restart. Sessions stay in the sidebar.",
+                                isOn: $m.nightlyClaudeRestart) {
+                            HStack(spacing: 6) {
+                                Text("After")
+                                Picker("", selection: $stepAwayMinutes) { ForEach([10.0, 15, 30, 60], id: \.self) { Text("\(Int($0)) min").tag($0) } }
+                                    .labelsHidden().fixedSize()
+                                Text("away, once it's over")
+                                Picker("", selection: $restartAboveGB) { ForEach([1.0, 1.5, 2, 3], id: \.self) { Text(String(format: "%g GB", $0)).tag($0) } }
+                                    .labelsHidden().fixedSize()
+                            }
+                        }
+                        setting("Free memory automatically", "When memory is critical, quits your ⚡ apps, biggest first.",
+                                isOn: $m.guardEnabled) {
+                            if m.expendable.isEmpty {
+                                Text("No ⚡ apps yet — hover an app in the list and click ⚡.").foregroundStyle(.secondary)
+                            } else {
+                                FlowChips(items: m.expendable.sorted().map { ($0, appName($0)) }) { id in m.expendable.remove(id) }
+                            }
+                        }
+                        setting("Warn me when memory runs out", nil, isOn: $m.alertsEnabled) {
+                            HStack(spacing: 6) {
+                                Text("At most every")
+                                Picker("", selection: $alertEveryMinutes) { ForEach([15.0, 30, 60, 120], id: \.self) { Text("\(Int($0)) min").tag($0) } }
+                                    .labelsHidden().fixedSize()
+                            }
+                        }
+                    }
+
+                    section("General") {
+                        setting("Open at login", nil, isOn: Binding(get: { m.launchAtLogin }, set: { m.launchAtLogin = $0 })) { EmptyView() }
+                        row("Menu bar shows") {
+                            Picker("", selection: $m.menuBarStyle) {
+                                Text("Pressure %").tag("percent")
+                                Text("Memory free").tag("free")
+                                Text("Lag (disk reads)").tag("lag")
+                                Text("Dot only").tag("dot")
+                            }
+                            .labelsHidden().fixedSize()
+                        }
+                        setting("Check for updates weekly", m.updateStatus ?? "Off = the app never goes online.", isOn: $m.weeklyUpdateCheck) {
+                            Button("Check now") { m.checkForUpdates(manual: true) }
+                        }
+                    }
+
+                    DisclosureGroup(isExpanded: $showAdvanced) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            choice("Lag sensitivity", "How quickly the icon turns orange or red.", $lagSensitivity, ["Relaxed", "Normal", "Sensitive"])
+                            choice("Update speed", "How often apps are re-measured while the panel is closed.", $updateSpeed, ["Battery saver", "Normal", "Fast"])
+                            row("Hide items smaller than") {
+                                Picker("", selection: $hideBelowMB) { ForEach([15.0, 50, 100, 250], id: \.self) { Text("\(Int($0)) MB").tag($0) } }
+                                    .labelsHidden().fixedSize()
+                            }
+                            row("Suggest quitting apps unused for") {
+                                Picker("", selection: $unusedAppHours) {
+                                    Text("Never").tag(0.0)
+                                    ForEach([1.0, 3, 6], id: \.self) { Text("\(Int($0)) h").tag($0) }
+                                }
+                                .labelsHidden().fixedSize()
+                            }
+                        }
+                        .padding(.top, 8)
+                    } label: { Text("Advanced").font(.subheadline.weight(.semibold)) }
+
+                    DisclosureGroup(isExpanded: $showTips) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Prefs.tipKinds, id: \.id) { kind in
+                                Toggle(kind.name, isOn: Binding(
+                                    get: { !disabledTips.contains(kind.id) },
+                                    set: { on in
+                                        if on { disabledTips.remove(kind.id) } else { disabledTips.insert(kind.id) }
+                                        UserDefaults.standard.set(Array(disabledTips), forKey: "disabledTips")
+                                        m.settingsChanged()
+                                    }))
+                                .toggleStyle(.checkbox)
+                            }
+                        }
+                        .padding(.top, 8)
+                    } label: { Text("Tips to show").font(.subheadline.weight(.semibold)) }
+
+                    if !m.actionLog.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Recent actions").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            ForEach(m.actionLog, id: \.self) { Text($0).font(.caption.monospaced()).foregroundStyle(.secondary) }
+                        }
+                    }
                 }
+                .padding(.trailing, 6)
             }
+            .frame(maxHeight: 470)
             Divider()
             HStack {
-                Button("Open Activity Monitor") {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
+                ConfirmButton(title: "Reset to defaults") {
+                    m.resetSettings(); disabledTips = []
+                    stepAwayMinutes = 15; restartAboveGB = 1.5; alertEveryMinutes = 15
+                    lagSensitivity = 1; updateSpeed = 1; hideBelowMB = 15; unusedAppHours = 3
                 }
                 Spacer()
                 Button("Quit Mac Memory Monitor") { NSApp.terminate(nil) }
             }
             .controlSize(.small)
         }
+        .onChange(of: hideBelowMB) { m.settingsChanged() }
+        .onChange(of: lagSensitivity) { m.settingsChanged() }
+        .onChange(of: unusedAppHours) { m.settingsChanged() }
     }
 
+    private func appName(_ id: String) -> String {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { return id }
+        return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+    }
+
+    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    private func row<C: View>(_ title: String, @ViewBuilder _ control: () -> C) -> some View {
+        HStack { Text(title).font(.callout); Spacer(); control() }.controlSize(.small)
+    }
+
+    private func choice(_ title: String, _ detail: String, _ value: Binding<Int>, _ names: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.callout)
+            Picker("", selection: value) { ForEach(names.indices, id: \.self) { Text(names[$0]).tag($0) } }
+                .labelsHidden().pickerStyle(.segmented).controlSize(.small)
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// A switch, plus its extra options shown underneath only while it's on.
     private func setting<Extra: View>(_ title: String, _ detail: String?, isOn: Binding<Bool>,
                                       @ViewBuilder extra: () -> Extra) -> some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.callout)
-                if let detail { Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-                extra()
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.callout)
+                    if let detail { Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                }
+                Spacer()
+                Toggle("", isOn: isOn).labelsHidden().toggleStyle(.switch).controlSize(.small)
             }
-            Spacer()
-            Toggle("", isOn: isOn).labelsHidden().toggleStyle(.switch).controlSize(.small)
+            if isOn.wrappedValue {
+                VStack(alignment: .leading, spacing: 6) { extra() }
+                    .font(.caption).controlSize(.small)
+                    .padding(.leading, 10)
+                    .overlay(alignment: .leading) { Rectangle().fill(.quaternary).frame(width: 2) }
+            }
+        }
+    }
+}
+
+/// Removable app chips for the ⚡ list.
+struct FlowChips: View {
+    let items: [(String, String)]
+    let remove: (String) -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(items, id: \.0) { id, name in
+                HStack(spacing: 4) {
+                    Image(systemName: "bolt.fill").foregroundStyle(.yellow)
+                    Text(name)
+                    Button { remove(id) } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.borderless).foregroundStyle(.secondary).help("Remove \(name)")
+                }
+            }
         }
     }
 }
