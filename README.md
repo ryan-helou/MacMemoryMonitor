@@ -13,6 +13,8 @@
 <img src="docs/main.png" width="300" alt="The panel: memory pressure, a tip, and the apps using the most memory">
 <img src="docs/history.png" width="300" alt="History: memory over the day with lag periods and what happened">
 
+<sub>Left: what's using your memory. Right: when your Mac lagged, and why.</sub>
+
 </div>
 
 ## Why
@@ -75,9 +77,15 @@ cd MacMemoryMonitor
 
 Press **⌥⌘M** anywhere to open the panel.
 
-<p align="center"><img src="docs/settings.png" width="300" alt="Settings: options appear under each switch"></p>
+<p align="center">
+  <img src="docs/tips.png" width="300" alt="Tips: what to do right now, with one-click fixes">
+  <img src="docs/disk.png" width="300" alt="Disk: the biggest files, moved to the Trash in one click">
+</p>
+<p align="center"><sub>Left: tips for what to do right now. Right: find big files and free up disk space.</sub></p>
 
 ## Settings
+
+<p align="center"><img src="docs/settings.png" width="300" alt="Settings: options appear under each switch"></p>
 
 Everything automatic can be switched off or tuned in **Settings** (gear icon): how long before sessions pause, when to warn you, what the menu bar shows, how sensitive it is, which tips you see, and more. **Reset to defaults** undoes it all.
 
