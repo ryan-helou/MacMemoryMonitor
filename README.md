@@ -10,10 +10,7 @@
 
 <br><br>
 
-<img src="docs/main.png" width="300" alt="The panel: memory pressure, a tip, and the apps using the most memory">
-<img src="docs/history.png" width="300" alt="History: memory over the day with lag periods and what happened">
-
-<sub>Left: what's using your memory. Right: when your Mac lagged, and why.</sub>
+<img src="docs/demo.gif" width="380" alt="Demo: the panel, tips, history, disk cleanup and settings">
 
 </div>
 
